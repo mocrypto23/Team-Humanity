@@ -1,0 +1,850 @@
+"use client";
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import type { InfluencerRow, DonationLinkItem } from "@/lib/types";
+import {
+  Plus,
+  Pencil,
+  Trash2,
+  ArrowUp,
+  ArrowDown,
+  X,
+  Link as LinkIcon,
+  Image as ImageIcon,
+  Check,
+  Video,
+  ExternalLink,
+  UploadCloud,
+  Pin,
+  PinOff,
+} from "lucide-react";
+
+import AdminImageUploader from "@/components/AdminImageUploader";
+import {
+  upsertInfluencer,
+  deleteInfluencer,
+  moveInfluencerSort,
+  setInfluencerPin,
+} from "@/app/admin/actions";
+
+const DONATION_LABELS = ["GoFundMe", "Chuffed", "PayPal", "Other"] as const;
+type DonationLabelPreset = (typeof DONATION_LABELS)[number];
+
+type DonationFormItem = {
+  labelPreset: DonationLabelPreset;
+  customLabel: string;
+  url: string;
+};
+
+function buildReturnTo(pathname: string, sp: URLSearchParams) {
+  const q = sp.toString();
+  return q ? `${pathname}?${q}` : pathname;
+}
+
+function normalizeLinks(input: any): DonationLinkItem[] {
+  if (!Array.isArray(input)) return [];
+  return input
+    .map((x) => ({
+      label: String(x?.label || "Donate").trim() || "Donate",
+      url: String(x?.url || "").trim(),
+    }))
+    .filter((x) => x.url);
+}
+
+function firstUrlFromLegacy(row: InfluencerRow) {
+  const legacy = row?.donation_link ? String(row.donation_link).trim() : "";
+  return legacy ? legacy : "";
+}
+
+function getRowLinks(row: InfluencerRow): DonationLinkItem[] {
+  const fromNew = normalizeLinks(row?.donation_links);
+  if (fromNew.length) return fromNew;
+  const legacy = firstUrlFromLegacy(row);
+  return legacy ? [{ label: "Donate", url: legacy }] : [];
+}
+
+function resolveImageSrc(raw: string) {
+  const p = String(raw || "").trim();
+  if (!p) return "";
+
+  if (p.startsWith("http://") || p.startsWith("https://") || p.startsWith("data:")) return p;
+
+  const clean = p.startsWith("/") ? p.slice(1) : p;
+
+  const base = String(process.env.NEXT_PUBLIC_SUPABASE_URL || "")
+    .trim()
+    .replace(/\/+$/, "");
+  const bucket = String(process.env.NEXT_PUBLIC_SUPABASE_BUCKET || "").trim();
+
+  if (!base || !bucket) return `/${clean}`;
+
+  const safePath = clean.split("/").map(encodeURIComponent).join("/");
+  return `${base}/storage/v1/object/public/${encodeURIComponent(bucket)}/${safePath}`;
+}
+
+function getFirstImage(row: InfluencerRow) {
+  const arr = (row?.image_paths ?? []).filter(Boolean) as string[];
+  const first = arr[0] ? String(arr[0]) : "";
+  return resolveImageSrc(first);
+}
+
+function clampText(s: string, max = 120) {
+  const v = String(s || "").replace(/\s+/g, " ").trim();
+  if (!v) return "";
+  return v.length > max ? `${v.slice(0, max).trim()}…` : v;
+}
+
+function isPresetLabel(label: string) {
+  return (DONATION_LABELS as readonly string[]).includes(label);
+}
+
+export default function AdminInfluencersClient({
+  influencers,
+}: {
+  influencers: InfluencerRow[];
+}) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const sp = useSearchParams();
+
+  const ok = sp.get("ok");
+  const err = sp.get("err");
+
+  const [toastSec, setToastSec] = useState(0);
+  const timerRef = useRef<number | null>(null);
+  const navRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (ok !== "saved") return;
+
+    // 1) اقفل المودال فورًا
+    const next = new URLSearchParams(sp.toString());
+    next.delete("edit");
+    next.delete("new");
+    router.replace(`${pathname}?${next.toString()}#top`);
+
+    // 2) ابدأ العدّاد
+    setToastSec(3);
+
+    // امسح أي تايمرز قديمة (احتياط)
+    if (timerRef.current) window.clearInterval(timerRef.current);
+    if (navRef.current) window.clearTimeout(navRef.current);
+
+    timerRef.current = window.setInterval(() => {
+      setToastSec((s) => (s > 0 ? s - 1 : 0));
+    }, 1000);
+
+    // 3) بعد 3 ثواني: نظف الـ URL
+    navRef.current = window.setTimeout(() => {
+      router.replace(`${pathname}#top`);
+    }, 3000);
+
+    return () => {
+      if (timerRef.current) window.clearInterval(timerRef.current);
+      if (navRef.current) window.clearTimeout(navRef.current);
+      timerRef.current = null;
+      navRef.current = null;
+    };
+  }, [ok]);
+
+  const editIdRaw = sp.get("edit") || "";
+  const editId = editIdRaw ? Number(editIdRaw) : NaN;
+  const isEditMode = Number.isFinite(editId);
+
+  const isCreateMode = sp.get("new") === "1";
+  const isModalOpen = isCreateMode || isEditMode;
+
+  const editing = useMemo(() => {
+    if (!isEditMode) return null;
+    return influencers.find((x) => x.id === editId) ?? null;
+  }, [isEditMode, editId, influencers]);
+
+  const returnTo = buildReturnTo(pathname, sp);
+
+  const pinned1 = influencers.find((x) => Number(x.highlight_slot) === 1) ?? null;
+  const pinned2 = influencers.find((x) => Number(x.highlight_slot) === 2) ?? null;
+
+  const pinnedCount = (pinned1 ? 1 : 0) + (pinned2 ? 1 : 0);
+
+  const orderedInfluencers = useMemo(() => {
+    const pinned = [pinned1, pinned2].filter(Boolean) as InfluencerRow[];
+
+    const rest = influencers
+      .filter((x) => Number(x.highlight_slot) !== 1 && Number(x.highlight_slot) !== 2)
+      .slice();
+
+    rest.sort((a, b) => Number(a.sort_order ?? 0) - Number(b.sort_order ?? 0));
+
+    return [...pinned, ...rest];
+  }, [influencers, pinned1, pinned2]);
+
+  const nonPinnedIndexMap = useMemo(() => {
+    const rest = influencers
+      .filter((x) => Number(x.highlight_slot) !== 1 && Number(x.highlight_slot) !== 2)
+      .slice()
+      .sort((a, b) => Number(a.sort_order ?? 0) - Number(b.sort_order ?? 0));
+
+    const m = new Map<number, number>();
+    rest.forEach((r, i) => m.set(r.id, i));
+    return { map: m, len: rest.length };
+  }, [influencers]);
+
+  const isPinned = (row: InfluencerRow) =>
+    Number(row.highlight_slot) === 1 || Number(row.highlight_slot) === 2;
+
+  const nextFreeSlot = () => {
+    if (!pinned1) return "1";
+    if (!pinned2) return "2";
+    return "";
+  };
+
+  const [storyTitle, setStoryTitle] = useState("");
+  const [bio, setBio] = useState("");
+  const [videoUrl, setVideoUrl] = useState("");
+
+  const [isPublished, setIsPublished] = useState(false);
+  const [isConfirmed, setIsConfirmed] = useState(false);
+
+  const [confirmedLabel, setConfirmedLabel] = useState<string>("");
+
+  const [donationLinks, setDonationLinks] = useState<DonationFormItem[]>([
+    { labelPreset: "GoFundMe", customLabel: "", url: "" },
+  ]);
+
+  const [imagePaths, setImagePaths] = useState<string[]>([]);
+
+  const resetForm = () => {
+    setStoryTitle("");
+    setBio("");
+    setVideoUrl("");
+    setDonationLinks([{ labelPreset: "GoFundMe", customLabel: "", url: "" }]);
+    setImagePaths([]);
+    setIsPublished(false);
+    setIsConfirmed(false);
+    setConfirmedLabel("");
+  };
+
+  useEffect(() => {
+    if (!isModalOpen) return;
+
+    if (editing) {
+      setStoryTitle(editing.name ?? "");
+      setBio(editing.bio ?? "");
+      setVideoUrl(editing.video_url ?? "");
+
+      setIsPublished(!!editing.is_published);
+      setIsConfirmed(!!editing.is_confirmed);
+
+      setConfirmedLabel(editing.confirmed_label ?? "");
+
+      const links = getRowLinks(editing);
+
+      setDonationLinks(
+        links.length
+          ? links.map((x) => {
+              const rawLabel = String(x.label || "").trim() || "Other";
+              const url = String(x.url || "").trim();
+
+              if (isPresetLabel(rawLabel)) {
+                return {
+                  labelPreset: rawLabel as DonationLabelPreset,
+                  customLabel: "",
+                  url,
+                };
+              }
+
+              return {
+                labelPreset: "Other",
+                customLabel: rawLabel || "",
+                url,
+              };
+            })
+          : [{ labelPreset: "GoFundMe", customLabel: "", url: "" }]
+      );
+
+      setImagePaths(((editing.image_paths ?? []) as string[]).filter(Boolean));
+    } else {
+      resetForm();
+    }
+  }, [isModalOpen, editing?.id]);
+
+  const donationLinksJson = useMemo(() => {
+    const items: DonationLinkItem[] = donationLinks
+      .map((x) => {
+        const label =
+          x.labelPreset === "Other"
+            ? String(x.customLabel || "").trim() || "Donate"
+            : x.labelPreset;
+
+        const url = String(x.url || "").trim();
+        return { label, url };
+      })
+      .filter((x) => x.url);
+
+    return JSON.stringify(items);
+  }, [donationLinks]);
+
+  const imagePathsJson = useMemo(() => {
+    const arr = imagePaths.map((x) => String(x || "").trim()).filter(Boolean);
+    return JSON.stringify(arr);
+  }, [imagePaths]);
+
+  const closeModal = () => {
+    const next = new URLSearchParams(sp.toString());
+    next.delete("edit");
+    next.delete("new");
+    const q = next.toString();
+    router.push(q ? `${pathname}?${q}#top` : `${pathname}#top`);
+  };
+
+  const openCreate = () => {
+    const next = new URLSearchParams(sp.toString());
+    next.delete("edit");
+    next.set("new", "1");
+    router.push(`${pathname}?${next.toString()}#top`);
+  };
+
+  const openEdit = (id: number) => {
+    const next = new URLSearchParams(sp.toString());
+    next.delete("new");
+    next.set("edit", String(id));
+    router.push(`${pathname}?${next.toString()}#top`);
+  };
+
+  // Donation helpers (Label + URL)
+  const updateDonationUrl = (idx: number, url: string) => {
+    setDonationLinks((prev) => prev.map((x, i) => (i === idx ? { ...x, url } : x)));
+  };
+
+  const updateDonationLabelPreset = (idx: number, labelPreset: DonationLabelPreset) => {
+    setDonationLinks((prev) =>
+      prev.map((x, i) =>
+        i === idx
+          ? {
+              ...x,
+              labelPreset,
+              customLabel: labelPreset === "Other" ? x.customLabel : "",
+            }
+          : x
+      )
+    );
+  };
+
+  const updateDonationCustomLabel = (idx: number, customLabel: string) => {
+    setDonationLinks((prev) => prev.map((x, i) => (i === idx ? { ...x, customLabel } : x)));
+  };
+
+  const addDonationLink = () => {
+    setDonationLinks((prev) => [...prev, { labelPreset: "GoFundMe", customLabel: "", url: "" }]);
+  };
+
+  const removeDonationLink = (idx: number) => {
+    setDonationLinks((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  // images helpers
+  const firstImageRaw = imagePaths[0] ? String(imagePaths[0]) : "";
+  const firstImage = resolveImageSrc(firstImageRaw);
+
+  const removeFirstImage = () => setImagePaths((prev) => prev.slice(1));
+
+  const onUploaded = (pathOrUrl: string) => {
+    const p = String(pathOrUrl || "").trim();
+    if (!p) return;
+
+    setImagePaths((prev) => {
+      if (!prev.length) return [p];
+      return [p, ...prev.slice(1)];
+    });
+  };
+
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const openFilePicker = () => fileInputRef.current?.click();
+
+  return (
+    <div className="space-y-6" id="top">
+      {toastSec > 0 ? (
+        <div className="fixed top-4 right-4 z-[9999] rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-900 shadow-lg">
+          ✅ Done — closing in {toastSec}s
+        </div>
+      ) : null}
+
+      {/* Top bar */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-zinc-900">Influencers</h1>
+          <p className="text-zinc-600 mt-1">Manage profiles, stories, and donation links.</p>
+        </div>
+
+        <button
+          type="button"
+          onClick={openCreate}
+          className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-2xl font-medium transition-colors shadow-lg shadow-emerald-200 flex items-center gap-2 transform active:scale-95"
+        >
+          <Plus className="w-5 h-5" /> Create New
+        </button>
+      </div>
+
+      {/* status */}
+      {(ok || err) && (
+        <div className="space-y-2">
+          {ok ? (
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-900">
+              ✅ Saved
+            </div>
+          ) : null}
+
+          {err ? (
+            <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">
+              ❌ {err}
+            </div>
+          ) : null}
+        </div>
+      )}
+
+      {/* List */}
+      <div className="space-y-4">
+        {orderedInfluencers.map((item) => {
+          const linksCount = getRowLinks(item).length;
+          const avatar = getFirstImage(item);
+
+          const pinned = isPinned(item);
+          const canPinMore = pinned || pinnedCount < 2;
+
+          // slot computed
+          const slotForAction = pinned ? "" : nextFreeSlot(); // "" => unpin
+          const pinDisabled = !pinned && (!canPinMore || !slotForAction);
+
+          const nonPinnedIdx = nonPinnedIndexMap.map.get(item.id);
+          const disableUp = pinned || nonPinnedIdx == null ? true : nonPinnedIdx === 0;
+          const disableDown =
+            pinned || nonPinnedIdx == null ? true : nonPinnedIdx === nonPinnedIndexMap.len - 1;
+
+          return (
+            <div
+              key={item.id}
+              className="bg-white/90 backdrop-blur rounded-3xl p-5 shadow-sm border border-zinc-100 flex flex-col md:flex-row items-start md:items-center gap-6 transition-all hover:shadow-lg hover:border-emerald-200"
+            >
+              {/* Sort Controls */}
+              <div className="flex flex-row md:flex-col gap-2 md:gap-1 bg-zinc-50 p-1 rounded-xl">
+                <form action={moveInfluencerSort}>
+                  <input type="hidden" name="id" value={item.id} />
+                  <input type="hidden" name="dir" value="up" />
+                  <input type="hidden" name="return_to" value={returnTo} />
+                  <button
+                    type="submit"
+                    disabled={disableUp}
+                    className="p-1.5 hover:bg-white hover:shadow-sm rounded-lg text-zinc-400 hover:text-emerald-600 disabled:opacity-30 transition-all"
+                    title="Move up"
+                  >
+                    <ArrowUp className="w-4 h-4" />
+                  </button>
+                </form>
+
+                <form action={moveInfluencerSort}>
+                  <input type="hidden" name="id" value={item.id} />
+                  <input type="hidden" name="dir" value="down" />
+                  <input type="hidden" name="return_to" value={returnTo} />
+                  <button
+                    type="submit"
+                    disabled={disableDown}
+                    className="p-1.5 hover:bg-white hover:shadow-sm rounded-lg text-zinc-400 hover:text-emerald-600 disabled:opacity-30 transition-all"
+                    title="Move down"
+                  >
+                    <ArrowDown className="w-4 h-4" />
+                  </button>
+                </form>
+              </div>
+
+              {/* Avatar */}
+              <div className="w-24 h-20 bg-zinc-100 rounded-2xl flex-shrink-0 overflow-hidden border border-zinc-200 relative">
+                {avatar ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={avatar} alt="" className="w-full h-full object-cover" />
+                ) : (
+                  <ImageIcon className="w-8 h-8 text-zinc-300 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
+                )}
+              </div>
+
+              {/* Content */}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-1 min-w-0">
+                  <h3 className="font-bold text-lg text-zinc-900 truncate">{item.name}</h3>
+
+                  {pinned ? (
+                    <span
+                      className="inline-flex items-center gap-1 rounded-full bg-red-50 border border-red-100 px-2 py-0.5 text-[11px] font-extrabold text-red-600"
+                      title={`Pinned (#${item.highlight_slot})`}
+                    >
+                      <Pin className="w-3.5 h-3.5" /> PIN
+                    </span>
+                  ) : null}
+
+                  {item.is_confirmed ? (
+                    <span className="bg-blue-500 text-white p-0.5 rounded-full shadow-sm" title="Confirmed">
+                      <Check className="w-3 h-3" />
+                    </span>
+                  ) : null}
+                </div>
+
+                <p className="text-sm text-zinc-500 line-clamp-1 mb-2 leading-relaxed">
+                  {clampText(item.bio || "", 110)}
+                </p>
+
+                <div className="flex flex-wrap gap-2 text-xs font-medium">
+                  {item.video_url ? (
+                    <a
+                      href={String(item.video_url)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex items-center gap-1 bg-red-50 text-red-600 px-2.5 py-1.5 rounded-lg hover:bg-red-100 transition-colors"
+                    >
+                      <Video className="w-3.5 h-3.5" /> Video
+                    </a>
+                  ) : null}
+
+                  {linksCount > 0 ? (
+                    <span className="flex items-center gap-1 bg-emerald-50 px-2.5 py-1.5 rounded-lg text-emerald-700">
+                      <LinkIcon className="w-3.5 h-3.5" /> {linksCount} Links
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="flex flex-row md:flex-col items-center gap-3 border-t md:border-t-0 md:border-l border-zinc-100 pt-4 md:pt-0 pl-0 md:pl-6 w-full md:w-auto justify-between md:justify-center">
+                <div className="flex items-center gap-2">
+                  {/* PIN */}
+                  <form action={setInfluencerPin}>
+                    <input type="hidden" name="id" value={item.id} />
+                    <input type="hidden" name="slot" value={slotForAction} />
+                    <input type="hidden" name="return_to" value={returnTo} />
+                    <button
+                      type="submit"
+                      disabled={pinDisabled}
+                      className={`p-2 rounded-xl transition-all border ${
+                        pinned
+                          ? "bg-red-50 text-red-600 border-red-100 hover:bg-red-100"
+                          : "bg-zinc-50 text-zinc-700 border-transparent hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-100"
+                      } ${pinDisabled ? "opacity-40 cursor-not-allowed" : ""}`}
+                      title={
+                        pinned
+                          ? "Unpin"
+                          : pinDisabled
+                          ? "Max 2 pins"
+                          : `Pin to top (#${slotForAction})`
+                      }
+                    >
+                      {pinned ? <PinOff className="w-4 h-4" /> : <Pin className="w-4 h-4" />}
+                    </button>
+                  </form>
+
+                  <button
+                    type="button"
+                    onClick={() => openEdit(item.id)}
+                    className="p-2 bg-zinc-50 hover:bg-emerald-50 text-zinc-600 hover:text-emerald-600 rounded-xl transition-all border border-transparent hover:border-emerald-100"
+                    title="Edit"
+                  >
+                    <Pencil className="w-4 h-4" />
+                  </button>
+
+                  <form action={deleteInfluencer}>
+                    <input type="hidden" name="id" value={item.id} />
+                    <button
+                      type="submit"
+                      className="p-2 bg-zinc-50 hover:bg-red-50 text-zinc-600 hover:text-red-500 rounded-xl transition-all border border-transparent hover:border-red-100"
+                      title="Delete"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </form>
+                </div>
+
+                <div className="flex flex-col md:items-end gap-1">
+                  <span
+                    className={`px-3 py-1 rounded-full text-xs font-bold border ${
+                      item.is_published
+                        ? "bg-emerald-50 text-emerald-700 border-emerald-100"
+                        : "bg-zinc-50 text-zinc-500 border-zinc-100"
+                    }`}
+                  >
+                    {item.is_published ? "Published" : "Draft"}
+                  </span>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+
+        {orderedInfluencers.length === 0 ? (
+          <div className="text-center py-16 bg-white/50 rounded-3xl border border-dashed border-zinc-200">
+            <p className="text-zinc-500 font-medium">No influencers yet.</p>
+          </div>
+        ) : null}
+      </div>
+
+      {/* Modal */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-900/40 backdrop-blur-md">
+          <div className="bg-white rounded-3xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl flex flex-col">
+            {/* Header */}
+            <div className="p-6 border-b border-zinc-100 flex justify-between items-center sticky top-0 bg-white z-10">
+              <h2 className="text-xl font-bold text-zinc-900">
+                {editing ? "Edit Influencer" : "Create New Influencer"}
+              </h2>
+
+              <button
+                type="button"
+                onClick={closeModal}
+                className="p-2 hover:bg-zinc-100 rounded-full text-zinc-500 transition-colors"
+                aria-label="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Form */}
+            <form action={upsertInfluencer} className="p-8 space-y-6">
+              <input type="hidden" name="id" value={editing?.id ?? ""} />
+              <input type="hidden" name="donation_links" value={donationLinksJson} />
+              <input type="hidden" name="image_paths" value={imagePathsJson} />
+
+              {/* Story Title */}
+              <div>
+                <label className="block text-sm font-bold text-zinc-800 mb-2">Story Title</label>
+                <input
+                  name="name"
+                  type="text"
+                  value={storyTitle}
+                  onChange={(e) => setStoryTitle(e.target.value)}
+                  className="w-full px-4 py-3 rounded-xl bg-white border border-zinc-300 text-zinc-900 placeholder-zinc-400 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all shadow-sm"
+                  placeholder="e.g. Building a Well in Ghana"
+                  required
+                />
+              </div>
+
+              {/* Bio */}
+              <div>
+                <label className="block text-sm font-bold text-zinc-800 mb-2">Bio / Story</label>
+                <textarea
+                  name="bio"
+                  value={bio}
+                  onChange={(e) => setBio(e.target.value)}
+                  className="w-full px-4 py-3 rounded-xl bg-white border border-zinc-300 text-zinc-900 placeholder-zinc-400 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all h-32 resize-none shadow-sm"
+                  placeholder="Tell the story..."
+                />
+              </div>
+
+              {/* Video URL */}
+              <div>
+                <label className="block text-sm font-bold text-zinc-800 mb-2">
+                  Video URL (YouTube/Reel)
+                </label>
+                <div className="relative">
+                  <Video className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
+                  <input
+                    name="video_url"
+                    type="text"
+                    value={videoUrl}
+                    onChange={(e) => setVideoUrl(e.target.value)}
+                    className="w-full pl-11 pr-4 py-3 rounded-xl bg-white border border-zinc-300 text-zinc-900 placeholder-zinc-400 focus:ring-2 focus:ring-emerald-500 outline-none shadow-sm transition-all"
+                    placeholder="https://..."
+                  />
+                </div>
+              </div>
+
+              {/* Donation Links */}
+              <div className="bg-zinc-50 p-5 rounded-2xl border border-zinc-200">
+                <label className="block text-sm font-bold text-zinc-800 mb-3">Donation Links</label>
+
+                <div className="space-y-3">
+                  {donationLinks.map((item, idx) => (
+                    <div
+                      key={idx}
+                      className="grid grid-cols-1 gap-2 sm:grid-cols-[220px_1fr_auto] sm:items-center"
+                    >
+                      {/* Label */}
+                      <div className="flex gap-2">
+                        <select
+                          value={item.labelPreset}
+                          onChange={(e) =>
+                            updateDonationLabelPreset(idx, e.target.value as DonationLabelPreset)
+                          }
+                          className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-emerald-500"
+                        >
+                          {DONATION_LABELS.map((l) => (
+                            <option key={l} value={l}>
+                              {l}
+                            </option>
+                          ))}
+                        </select>
+
+                        {item.labelPreset === "Other" ? (
+                          <input
+                            type="text"
+                            value={item.customLabel}
+                            onChange={(e) => updateDonationCustomLabel(idx, e.target.value)}
+                            className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-emerald-500"
+                            placeholder="Custom label"
+                          />
+                        ) : null}
+                      </div>
+
+                      {/* URL */}
+                      <div className="relative">
+                        <ExternalLink className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
+                        <input
+                          type="text"
+                          value={item.url}
+                          onChange={(e) => updateDonationUrl(idx, e.target.value)}
+                          className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-white border border-zinc-300 text-zinc-900 text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
+                          placeholder="https://..."
+                        />
+                      </div>
+
+                      {/* Remove */}
+                      {donationLinks.length > 1 ? (
+                        <button
+                          type="button"
+                          onClick={() => removeDonationLink(idx)}
+                          className="p-2.5 bg-white border border-zinc-200 text-red-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors"
+                          title="Remove link"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      ) : (
+                        <div className="hidden sm:block" />
+                      )}
+                    </div>
+                  ))}
+
+                  <button
+                    type="button"
+                    onClick={addDonationLink}
+                    className="text-sm font-bold text-emerald-600 hover:text-emerald-700 flex items-center gap-1 mt-2 px-1"
+                  >
+                    <Plus className="w-4 h-4" /> Add another link
+                  </button>
+                </div>
+              </div>
+
+              {/* Images */}
+              <div>
+                <label className="block text-sm font-bold text-zinc-800 mb-3">Images</label>
+
+                {/* uploader hidden but functional */}
+                <AdminImageUploader onUploaded={onUploaded} inputRef={fileInputRef} hideUI autoUpload />
+
+                {!firstImage ? (
+                  <button
+                    type="button"
+                    onClick={openFilePicker}
+                    className="w-full h-32 border-2 border-dashed border-zinc-300 rounded-2xl flex flex-col items-center justify-center gap-2 text-zinc-500 hover:text-emerald-600 hover:border-emerald-400 hover:bg-emerald-50 transition-all group"
+                  >
+                    <div className="p-3 bg-zinc-100 rounded-full group-hover:bg-white transition-colors">
+                      <UploadCloud className="w-6 h-6" />
+                    </div>
+                    <span className="text-sm font-bold">Click to Upload Image</span>
+                  </button>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="relative w-full h-48 rounded-2xl overflow-hidden group border border-zinc-200">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={firstImage} alt="Preview" className="w-full h-full object-cover" />
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
+                        <button
+                          type="button"
+                          onClick={removeFirstImage}
+                          className="bg-white text-red-500 px-4 py-2 rounded-xl font-bold text-sm shadow-lg flex items-center gap-2 hover:bg-red-50 transition-colors"
+                        >
+                          <Trash2 className="w-4 h-4" /> Delete Image
+                        </button>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={openFilePicker}
+                      className="text-sm font-bold text-emerald-600 hover:text-emerald-700"
+                    >
+                      Change image
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* confirmed_label */}
+              <div>
+                <label className="block text-sm font-bold text-zinc-800 mb-2">confirmed_label</label>
+                <input
+                  name="confirmed_label"
+                  value={confirmedLabel}
+                  onChange={(e) => setConfirmedLabel(e.target.value)}
+                  className="w-full px-4 py-3 rounded-xl bg-white border border-zinc-300 text-zinc-900 placeholder-zinc-400 focus:ring-2 focus:ring-emerald-500 outline-none shadow-sm transition-all"
+                  placeholder="Confirmed by Team Humanity"
+                />
+              </div>
+
+              {/* Toggles */}
+              <div className="flex items-center gap-10 pt-4 border-t border-zinc-100">
+                <input type="checkbox" name="is_published" checked={isPublished} readOnly className="hidden" />
+                <input type="checkbox" name="is_confirmed" checked={isConfirmed} readOnly className="hidden" />
+
+                <div
+                  className="flex items-center gap-3 cursor-pointer"
+                  onClick={() => setIsPublished((v) => !v)}
+                  role="switch"
+                  aria-checked={isPublished}
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") setIsPublished((v) => !v);
+                  }}
+                >
+                  <div className={`w-12 h-6 rounded-full relative transition-colors ${isPublished ? "bg-emerald-500" : "bg-zinc-200"}`}>
+                    <div className={`w-4 h-4 bg-white rounded-full absolute top-1 shadow-sm transition-all ${isPublished ? "left-7" : "left-1"}`} />
+                  </div>
+                  <span className="text-sm font-bold text-zinc-700 select-none">Published</span>
+                </div>
+
+                <div
+                  className="flex items-center gap-3 cursor-pointer"
+                  onClick={() => setIsConfirmed((v) => !v)}
+                  role="switch"
+                  aria-checked={isConfirmed}
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") setIsConfirmed((v) => !v);
+                  }}
+                >
+                  <div className={`w-12 h-6 rounded-full relative transition-colors ${isConfirmed ? "bg-blue-500" : "bg-zinc-200"}`}>
+                    <div className={`w-4 h-4 bg-white rounded-full absolute top-1 shadow-sm transition-all ${isConfirmed ? "left-7" : "left-1"}`} />
+                  </div>
+                  <span className="text-sm font-bold text-zinc-700 select-none">Confirmed</span>
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="pt-2 flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={closeModal}
+                  className="px-6 py-2.5 rounded-xl font-bold text-zinc-600 hover:bg-white hover:border hover:border-zinc-200 hover:shadow-sm transition-all"
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="submit"
+                  className="px-6 py-2.5 rounded-xl font-bold text-white bg-emerald-600 hover:bg-emerald-700 shadow-lg shadow-emerald-200 transition-all active:scale-95"
+                >
+                  {editing ? "Save Changes" : "Create Influencer"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

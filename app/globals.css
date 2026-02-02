@@ -1,4 +1,6 @@
-@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 html {
   scroll-behavior: smooth;
@@ -10,7 +12,4 @@ html {
 
 body {
   text-rendering: geometricPrecision;
-}
-html {
-  scroll-behavior: smooth;
 }

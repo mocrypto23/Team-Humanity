@@ -21,7 +21,6 @@ export async function supabaseAuthServer() {
             cookieStore.set(name, value, options);
           });
         } catch {
-          // في بعض مراحل Server Components ممكن يمنع set cookies
         }
       },
     },

@@ -1,3 +1,4 @@
+// D:\New-Project\team-humanity\app\admin\messages\page.tsx
 import { supabaseAuthServer } from "@/lib/supabaseAuthServer";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { redirect } from "next/navigation";
@@ -9,6 +10,7 @@ import {
   archiveContactMessage,
   unarchiveContactMessage,
 } from "../actions";
+import { Mail, MailOpen, Trash2, Archive, ArchiveRestore, Search } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -48,6 +50,7 @@ function buildHref(params: { page?: number; q?: string; tab?: string }) {
   const qs = sp.toString();
   return qs ? `/admin/messages?${qs}` : "/admin/messages";
 }
+
 function clipForEmail(text: string, max = 600) {
   const s = String(text || "").trim();
   if (!s) return "";
@@ -74,6 +77,7 @@ function makeReplyMailto(opts: { name: string; email: string; message: string })
 
   return `mailto:${encodeURIComponent(email)}?${params.toString()}`;
 }
+
 function makeReplyGmailUrl(opts: { name: string; email: string; message: string }) {
   const name = (opts.name || "there").trim();
   const email = (opts.email || "").trim();
@@ -107,45 +111,39 @@ export default async function AdminMessagesPage({
   const q = (sp?.q || "").trim();
   const tab = (sp?.tab || "all").trim(); // all | unread | read | archived
 
-  const { email } = await requireAdmin();
+  await requireAdmin();
 
   const from = (page - 1) * PAGE_SIZE;
   const to = from + PAGE_SIZE - 1;
 
-  // Base query
   let query = supabaseAdmin
     .from("contact_messages")
     .select("id,name,email,message,created_at,is_read,is_archived", { count: "exact" })
     .order("created_at", { ascending: false });
 
-  // Tabs
   if (tab === "unread") query = query.eq("is_archived", false).eq("is_read", false);
   else if (tab === "read") query = query.eq("is_archived", false).eq("is_read", true);
   else if (tab === "archived") query = query.eq("is_archived", true);
-  else query = query.eq("is_archived", false); // "all" = active only
+  else query = query.eq("is_archived", false);
 
-  // Search (simple: match name or email)
   if (q) {
     const safe = q.replace(/%/g, "\\%").replace(/_/g, "\\_");
     query = query.or(`name.ilike.%${safe}%,email.ilike.%${safe}%`);
   }
 
   const { data, error, count } = await query.range(from, to);
-const [{ count: unreadCount }, { count: archivedCount }] = await Promise.all([
-  supabaseAdmin
-    .from("contact_messages")
-    .select("id", { count: "exact", head: true })
-    .eq("is_archived", false)
-    .eq("is_read", false),
 
-  supabaseAdmin
-    .from("contact_messages")
-    .select("id", { count: "exact", head: true })
-    .eq("is_archived", true),
-]).then((results) => results.map((r: any) => ({ count: r.count ?? 0 })));
-
-const totalActiveCount =
-  tab === "archived" ? archivedCount : (count ?? 0); 
+  const [{ count: unreadCount }, { count: archivedCount }] = await Promise.all([
+    supabaseAdmin
+      .from("contact_messages")
+      .select("id", { count: "exact", head: true })
+      .eq("is_archived", false)
+      .eq("is_read", false),
+    supabaseAdmin
+      .from("contact_messages")
+      .select("id", { count: "exact", head: true })
+      .eq("is_archived", true),
+  ]).then((results) => results.map((r: any) => ({ count: r.count ?? 0 })));
 
   const total = count ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -160,133 +158,96 @@ const totalActiveCount =
   ] as const;
 
   return (
-    <main className="min-h-screen bg-gradient-to-b from-emerald-50 via-white to-white text-zinc-900">
-      <div className="pointer-events-none fixed inset-0 -z-10">
-        <div className="absolute -top-28 left-1/2 h-80 w-80 -translate-x-1/2 rounded-full bg-emerald-200/30 blur-2xl" />
-        <div className="absolute top-40 right-0 h-72 w-72 rounded-full bg-emerald-100/60 blur-2xl" />
-        <div className="absolute bottom-0 left-0 h-72 w-72 rounded-full bg-emerald-100/55 blur-2xl" />
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-3xl font-bold text-zinc-900">Messages</h1>
+        <p className="text-zinc-600 mt-1">Check your inbox and communications.</p>
       </div>
 
-      <div className="mx-auto max-w-7xl px-4 py-8 md:py-10">
-        {/* Header */}
-        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-          <div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-white/90 px-3 py-1 text-xs font-semibold text-emerald-800">
-              <span className="h-2 w-2 rounded-full bg-emerald-500" />
-              Admin Console
-            </div>
-            <h1 className="mt-3 text-2xl font-semibold tracking-tight md:text-3xl">
-              Team Humanity — Messages
-            </h1>
-            <p className="mt-1 text-sm text-zinc-600">
-              Logged in as <span className="font-semibold">{email}</span>
-            </p>
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            <a
-              className="rounded-2xl border border-emerald-200 bg-white/90 px-4 py-2.5 text-sm font-semibold text-emerald-800 hover:bg-emerald-50"
-              href="/admin"
-            >
-              ← Back to dashboard
-            </a>
-
-            <a
-              className="rounded-2xl border border-zinc-200 bg-white/90 px-4 py-2.5 text-sm font-semibold hover:bg-zinc-50"
-              href="/"
-              target="_blank"
-              rel="noreferrer"
-            >
-              Open site
-            </a>
-
-            <form action={adminSignOut}>
-              <button className="rounded-2xl border border-zinc-200 bg-white/90 px-4 py-2.5 text-sm font-semibold hover:bg-zinc-50">
-                Sign out
-              </button>
-            </form>
-          </div>
+      {/* Counters */}
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div className="rounded-3xl border border-emerald-200 bg-white/80 p-4 shadow-sm">
+          <p className="text-xs font-semibold text-emerald-800">Active (current filter)</p>
+          <p className="mt-1 text-2xl font-semibold">
+            {tab === "archived" ? archivedCount : total}
+          </p>
+          <p className="mt-1 text-xs text-zinc-500">Based on current tab + search</p>
         </div>
-{/* Counters */}
-<div className="mt-6 grid gap-3 sm:grid-cols-3">
-  <div className="rounded-3xl border border-emerald-200 bg-white/80 p-4 shadow-sm">
-    <p className="text-xs font-semibold text-emerald-800">Active (current filter)</p>
-    <p className="mt-1 text-2xl font-semibold">{totalActiveCount}</p>
-    <p className="mt-1 text-xs text-zinc-500">Based on current tab + search</p>
-  </div>
 
-  <div className="rounded-3xl border border-emerald-200 bg-white/80 p-4 shadow-sm">
-    <p className="text-xs font-semibold text-emerald-800">Unread</p>
-    <p className="mt-1 text-2xl font-semibold">{unreadCount}</p>
-    <p className="mt-1 text-xs text-zinc-500">Not archived</p>
-  </div>
+        <div className="rounded-3xl border border-emerald-200 bg-white/80 p-4 shadow-sm">
+          <p className="text-xs font-semibold text-emerald-800">Unread</p>
+          <p className="mt-1 text-2xl font-semibold">{unreadCount}</p>
+          <p className="mt-1 text-xs text-zinc-500">Not archived</p>
+        </div>
 
-  <div className="rounded-3xl border border-emerald-200 bg-white/80 p-4 shadow-sm">
-    <p className="text-xs font-semibold text-emerald-800">Archived</p>
-    <p className="mt-1 text-2xl font-semibold">{archivedCount}</p>
-    <p className="mt-1 text-xs text-zinc-500">Stored messages</p>
-  </div>
-</div>
+        <div className="rounded-3xl border border-emerald-200 bg-white/80 p-4 shadow-sm">
+          <p className="text-xs font-semibold text-emerald-800">Archived</p>
+          <p className="mt-1 text-2xl font-semibold">{archivedCount}</p>
+          <p className="mt-1 text-xs text-zinc-500">Stored messages</p>
+        </div>
+      </div>
 
-        {err ? (
-          <div className="mt-6 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm font-medium text-red-800">
-            {err}
-          </div>
-        ) : null}
+      {err ? (
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-3 text-sm font-medium text-red-800">
+          {err}
+        </div>
+      ) : null}
 
-        {error ? (
-          <div className="mt-6 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">
-            Failed to load messages: {error.message}
-          </div>
-        ) : null}
+      {error ? (
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+          Failed to load messages: {error.message}
+        </div>
+      ) : null}
 
-        {/* Filters row */}
-        <div className="mt-6 grid gap-3 lg:grid-cols-12">
-          {/* Tabs */}
-          <div className="lg:col-span-8 flex flex-wrap gap-2">
-            {tabs.map((t) => {
-              const active = tab === t.key;
-              return (
-                <a
-                  key={t.key}
-                  href={buildHref({ tab: t.key, q, page: 1 })}
-                  className={
-                    active
-                      ? "rounded-2xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white"
-                      : "rounded-2xl border border-emerald-200 bg-white/80 px-4 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-50"
-                  }
-                >
-                  {t.label}
-                </a>
-              );
-            })}
-          </div>
+      {/* Tabs + Search */}
+      <div className="grid gap-3 lg:grid-cols-12">
+        <div className="lg:col-span-8 flex flex-wrap gap-2">
+          {tabs.map((t) => {
+            const active = tab === t.key;
+            return (
+              <a
+                key={t.key}
+                href={buildHref({ tab: t.key, q, page: 1 })}
+                className={
+                  active
+                    ? "rounded-2xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm"
+                    : "rounded-2xl border border-emerald-200 bg-white/80 px-4 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-50"
+                }
+              >
+                {t.label}
+              </a>
+            );
+          })}
+        </div>
 
-          {/* Search */}
-          <div className="lg:col-span-4">
-            <form action="/admin/messages" method="GET" className="flex gap-2">
-              <input type="hidden" name="tab" value={tab} />
+        <div className="lg:col-span-4">
+          <form action="/admin/messages" method="GET" className="flex gap-2">
+            <input type="hidden" name="tab" value={tab} />
+            <div className="relative w-full">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
               <input
                 name="q"
                 defaultValue={q}
                 placeholder="Search name/email..."
-                className="w-full rounded-2xl border border-zinc-200 bg-white/90 px-3 py-2 text-sm outline-none focus:border-emerald-300 focus:ring-2 focus:ring-emerald-100"
+                className="w-full pl-10 rounded-2xl border border-emerald-100 bg-emerald-50/50 px-3 py-2 text-sm outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500"
               />
-              <button className="rounded-2xl bg-zinc-900 px-4 py-2 text-sm font-semibold text-white">
-                Search
-              </button>
-            </form>
-          </div>
-        </div>
-
-        {/* List */}
-        <div className="mt-6 space-y-3">
-          {(!data || data.length === 0) && !error ? (
-            <div className="rounded-3xl border border-emerald-200 bg-white/80 p-4 shadow-sm text-sm text-zinc-600">
-              No messages found.
             </div>
-          ) : null}
+            <button className="rounded-2xl bg-zinc-900 px-4 py-2 text-sm font-semibold text-white">
+              Search
+            </button>
+          </form>
+        </div>
+      </div>
 
+      {/* List */}
+      <div className="bg-white/80 rounded-3xl p-4 shadow-sm border border-emerald-200">
+        {(!data || data.length === 0) && !error ? (
+          <div className="rounded-3xl border border-emerald-100 bg-white/70 p-4 text-sm text-zinc-600">
+            No messages found.
+          </div>
+        ) : null}
+
+        <div className="space-y-2">
           {data?.map((m) => {
             const isRead = !!m.is_read;
             const isArchived = !!m.is_archived;
@@ -294,114 +255,94 @@ const totalActiveCount =
             return (
               <div
                 key={String(m.id)}
-                className="rounded-3xl border border-emerald-200 bg-white/85 p-4 shadow-sm"
+                className={[
+                  "group flex items-start gap-4 p-4 rounded-2xl transition-all border",
+                  isRead
+                    ? "bg-white border-transparent hover:border-emerald-100"
+                    : "bg-emerald-50/40 border-emerald-100 hover:bg-emerald-50",
+                ].join(" ")}
               >
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="text-sm font-semibold text-zinc-900">{m.name}</p>
+                <div className="w-10 h-10 rounded-full bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-800 text-xs font-bold flex-shrink-0">
+                  {(m.name || "U").slice(0, 1).toUpperCase()}
+                </div>
 
-                      {!isArchived ? (
-                        isRead ? (
-                          <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] font-semibold text-zinc-700">
-                            Read
-                          </span>
-                        ) : (
-                          <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-900">
-                            Unread
-                          </span>
-                        )
-                      ) : (
-                        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-900">
-                          Archived
-                        </span>
-                      )}
-                    </div>
-
-                    <p className="mt-1 text-xs text-zinc-500">
-                      {m.email} • {new Date(m.created_at).toLocaleString()}
+                <div className="flex-1 min-w-0">
+                  <div className="flex justify-between items-center gap-3">
+                    <p className={isRead ? "text-sm font-medium text-zinc-900 truncate" : "text-sm font-bold text-zinc-900 truncate"}>
+                      {m.name}
                     </p>
+                    <span className="text-xs text-zinc-500 flex-shrink-0">
+                      {new Date(m.created_at).toLocaleString()}
+                    </span>
                   </div>
 
-                  {/* Actions */}
-                  <div className="flex flex-wrap gap-2">
-                    {!isArchived ? (
-                      isRead ? (
-                        <form action={markContactMessageUnread}>
-                          <input type="hidden" name="id" value={String(m.id)} />
-                          <button
-                            type="submit"
-                            className="rounded-2xl border border-zinc-200 bg-white px-3 py-2 text-xs font-semibold hover:bg-zinc-50"
-                          >
-                            Mark unread
-                          </button>
-                        </form>
-                      ) : (
-                        <form action={markContactMessageRead}>
-                          <input type="hidden" name="id" value={String(m.id)} />
-                          <button
-                            type="submit"
-                            className="rounded-2xl border border-emerald-200 bg-white px-3 py-2 text-xs font-semibold text-emerald-800 hover:bg-emerald-50"
-                          >
-                            Mark read
-                          </button>
-                        </form>
-                      )
-                    ) : null}
+                  <p className="text-xs text-zinc-500 mt-0.5 truncate">{m.email}</p>
 
-                    {!isArchived ? (
-                      <form action={archiveContactMessage}>
-                        <input type="hidden" name="id" value={String(m.id)} />
-                        <button
-                          type="submit"
-                          className="rounded-2xl border border-amber-200 bg-white px-3 py-2 text-xs font-semibold text-amber-800 hover:bg-amber-50"
-                        >
-                          Archive
-                        </button>
-                      </form>
-                    ) : (
-                      <form action={unarchiveContactMessage}>
-                        <input type="hidden" name="id" value={String(m.id)} />
-                        <button
-                          type="submit"
-                          className="rounded-2xl border border-emerald-200 bg-white px-3 py-2 text-xs font-semibold text-emerald-800 hover:bg-emerald-50"
-                        >
-                          Unarchive
-                        </button>
-                      </form>
-                    )}
-<a
-  href={makeReplyGmailUrl({ name: m.name, email: m.email, message: m.message })}
-  target="_blank"
-  rel="noreferrer"
-  className="rounded-2xl border border-zinc-200 bg-white px-3 py-2 text-xs font-semibold hover:bg-zinc-50"
->
-  Reply (Gmail)
-</a>
+                  <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-zinc-700">
+                    {m.message}
+                  </p>
 
-<a
-  href={makeReplyMailto({ name: m.name, email: m.email, message: m.message })}
-  className="rounded-2xl border border-zinc-200 bg-white px-3 py-2 text-xs font-semibold hover:bg-zinc-50"
->
-  Reply (Default)
-</a>
-
-
-                    <form action={deleteContactMessage}>
-                      <input type="hidden" name="id" value={String(m.id)} />
-                      <button
-                        type="submit"
-                        className="rounded-2xl border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50"
-                      >
-                        Delete
-                      </button>
-                    </form>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <a
+                      href={makeReplyGmailUrl({ name: m.name, email: m.email, message: m.message })}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="rounded-2xl border border-zinc-200 bg-white px-3 py-2 text-xs font-semibold hover:bg-zinc-50"
+                    >
+                      Reply (Gmail)
+                    </a>
+                    <a
+                      href={makeReplyMailto({ name: m.name, email: m.email, message: m.message })}
+                      className="rounded-2xl border border-zinc-200 bg-white px-3 py-2 text-xs font-semibold hover:bg-zinc-50"
+                    >
+                      Reply (Default)
+                    </a>
                   </div>
                 </div>
 
-                <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-zinc-700">
-                  {m.message}
-                </p>
+                {/* Hover actions */}
+                <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                  {!isArchived ? (
+                    isRead ? (
+                      <form action={markContactMessageUnread}>
+                        <input type="hidden" name="id" value={String(m.id)} />
+                        <button className="p-2 hover:bg-emerald-100 text-emerald-700 rounded-lg" title="Mark unread">
+                          <Mail className="w-4 h-4" />
+                        </button>
+                      </form>
+                    ) : (
+                      <form action={markContactMessageRead}>
+                        <input type="hidden" name="id" value={String(m.id)} />
+                        <button className="p-2 hover:bg-emerald-100 text-emerald-700 rounded-lg" title="Mark read">
+                          <MailOpen className="w-4 h-4" />
+                        </button>
+                      </form>
+                    )
+                  ) : null}
+
+                  {!isArchived ? (
+                    <form action={archiveContactMessage}>
+                      <input type="hidden" name="id" value={String(m.id)} />
+                      <button className="p-2 hover:bg-amber-100 text-amber-700 rounded-lg" title="Archive">
+                        <Archive className="w-4 h-4" />
+                      </button>
+                    </form>
+                  ) : (
+                    <form action={unarchiveContactMessage}>
+                      <input type="hidden" name="id" value={String(m.id)} />
+                      <button className="p-2 hover:bg-emerald-100 text-emerald-700 rounded-lg" title="Unarchive">
+                        <ArchiveRestore className="w-4 h-4" />
+                      </button>
+                    </form>
+                  )}
+
+                  <form action={deleteContactMessage}>
+                    <input type="hidden" name="id" value={String(m.id)} />
+                    <button className="p-2 hover:bg-red-100 text-red-600 rounded-lg" title="Delete">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </form>
+                </div>
               </div>
             );
           })}
@@ -409,7 +350,7 @@ const totalActiveCount =
 
         {/* Pagination */}
         {!error ? (
-          <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-xs text-zinc-500">
               Showing page <span className="font-semibold">{page}</span> of{" "}
               <span className="font-semibold">{totalPages}</span> • {total} total
@@ -418,22 +359,24 @@ const totalActiveCount =
             <div className="flex items-center gap-2">
               <a
                 href={buildHref({ tab, q, page: hasPrev ? page - 1 : 1 })}
-                className={`rounded-2xl border px-4 py-2 text-sm font-semibold ${
+                className={[
+                  "rounded-2xl border px-4 py-2 text-sm font-semibold",
                   hasPrev
                     ? "border-zinc-200 bg-white hover:bg-zinc-50"
-                    : "border-zinc-100 bg-zinc-50 text-zinc-400 pointer-events-none"
-                }`}
+                    : "border-zinc-100 bg-zinc-50 text-zinc-400 pointer-events-none",
+                ].join(" ")}
               >
                 Prev
               </a>
 
               <a
                 href={buildHref({ tab, q, page: hasNext ? page + 1 : page })}
-                className={`rounded-2xl border px-4 py-2 text-sm font-semibold ${
+                className={[
+                  "rounded-2xl border px-4 py-2 text-sm font-semibold",
                   hasNext
                     ? "border-zinc-200 bg-white hover:bg-zinc-50"
-                    : "border-zinc-100 bg-zinc-50 text-zinc-400 pointer-events-none"
-                }`}
+                    : "border-zinc-100 bg-zinc-50 text-zinc-400 pointer-events-none",
+                ].join(" ")}
               >
                 Next
               </a>
@@ -441,6 +384,9 @@ const totalActiveCount =
           </div>
         ) : null}
       </div>
-    </main>
+
+      {/* keep existing signout form available */}
+      <form action={adminSignOut} className="hidden" />
+    </div>
   );
 }

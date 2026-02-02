@@ -444,7 +444,7 @@ export default function StoryPageClient({ influencer }: { influencer: Influencer
                 </>
               ) : (
                 <div className="sm:col-span-2 rounded-2xl border border-emerald-200 bg-white p-4 text-sm text-zinc-600">
-                  ضع رابط YouTube أو Instagram Reel في <span className="font-mono text-zinc-800">video_url</span>.
+                 Youtube - Instagram reel<span className="font-mono text-zinc-800">video_url</span>.
                 </div>
               )}
             </div>

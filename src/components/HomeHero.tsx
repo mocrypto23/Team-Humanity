@@ -6,7 +6,6 @@ import { motion, useReducedMotion } from "framer-motion";
 export default function HomeHero() {
   const reduceMotion = useReducedMotion();
 
-  // نفس إحساس Support Dreams.. حركة خفيفة جدًا (float) بدون مبالغة
   const floatY = reduceMotion ? 0 : [0, -7, 0];
 
   return (

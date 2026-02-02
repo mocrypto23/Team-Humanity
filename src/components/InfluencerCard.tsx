@@ -118,13 +118,11 @@ function useTilt3D(disabled: boolean) {
       const cx = rect.width / 2;
       const cy = rect.height / 2;
 
-      // نفس رينج الميلان “الرائع” بتاع المثال (لكن مناسب لحجم كروتكم)
-      const rotateX = ((y - cy) / cy) * -8; // max ~8deg
+      const rotateX = ((y - cy) / cy) * -8; 
       const rotateY = ((x - cx) / cx) * 8;
 
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
       rafRef.current = requestAnimationFrame(() => {
-        // perspective + rotate + scale subtle
         setTransform(`perspective(1100px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) scale(1.02)`);
       });
     },
@@ -135,10 +133,8 @@ function useTilt3D(disabled: boolean) {
     if (disabled) return;
     const el = ref.current;
     if (!el) return;
-    // رجوع ناعم جدًا
     el.style.transition = "transform 180ms ease";
     setTransform("perspective(1100px) rotateX(0deg) rotateY(0deg) scale(1)");
-    // بعد الرجوع، نرجّع transition أسرع للحركة أثناء الماوس
     window.setTimeout(() => {
       if (!ref.current) return;
       ref.current.style.transition = "transform 80ms ease-out";
@@ -149,7 +145,6 @@ function useTilt3D(disabled: boolean) {
     if (disabled) return;
     const el = ref.current;
     if (!el) return;
-    // حركة أثناء hover تكون responsive
     el.style.transition = "transform 80ms ease-out";
     el.style.transformStyle = "preserve-3d";
     el.style.willChange = "transform";
@@ -452,7 +447,6 @@ export default function InfluencerCard({
         onMouseMove={tilt.onMove}
         onMouseLeave={tilt.onLeave}
         style={{
-          // baseline transform so leave works even before first move
           transform: "perspective(1100px) rotateX(0deg) rotateY(0deg) scale(1)",
           transformStyle: "preserve-3d",
           willChange: "transform",
@@ -460,7 +454,6 @@ export default function InfluencerCard({
       >
         <motion.article
           onClick={onToggle}
-          // ❌ شيلنا whileHover لتجنب التضارب مع transform الخاص بالـ tilt
           transition={{ type: "spring", stiffness: 260, damping: 24 }}
           className={[
             "group relative w-full self-start min-h-0 cursor-pointer overflow-hidden rounded-3xl border bg-white/85 p-4 shadow-sm backdrop-blur",
@@ -471,7 +464,6 @@ export default function InfluencerCard({
             <div className="absolute -top-16 left-1/2 h-40 w-40 -translate-x-1/2 rounded-full bg-emerald-200/20 blur-2xl" />
           </div>
 
-          {/* ✅ Header (smart for urgent only) */}
           <div className={["relative", isHighlight ? "pr-16" : ""].join(" ")}>
             {isHighlight ? (
               <div className="flex items-start gap-3">
@@ -676,7 +668,6 @@ export default function InfluencerCard({
                     </div>
                   ) : (
                     <p className="text-sm text-zinc-600">
-                      ضع رابط YouTube أو Instagram Reel في{" "}
                       <span className="font-mono text-zinc-800">video_url</span>.
                     </p>
                   )}

@@ -111,7 +111,6 @@ export default function StatsStrip() {
   const v0 = useCountUp(stats[0].type === "count" ? stats[0].n : 0, inView, 1000);
   const v1 = useCountUp(stats[1].type === "count" ? stats[1].n : 0, inView, 900);
 
-  // progress شكلية (مش لازم تكون دقيقة)
   const p0 = Math.min(1, v0 / 220);
   const p1 = Math.min(1, v1 / 30);
   const p2 = 0.82;

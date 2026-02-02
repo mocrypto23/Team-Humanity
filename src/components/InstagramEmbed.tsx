@@ -5,10 +5,7 @@ import { useEffect } from "react";
 
 export default function InstagramEmbed({ url }: { url: string }) {
   useEffect(() => {
-    // بعد تحميل السكربت أو تغيير الرابط، اطلب من انستا يعمل process
-    // @ts-ignore
     if (window?.instgrm?.Embeds?.process) {
-      // @ts-ignore
       window.instgrm.Embeds.process();
     }
   }, [url]);
@@ -19,9 +16,7 @@ export default function InstagramEmbed({ url }: { url: string }) {
         src="https://www.instagram.com/embed.js"
         strategy="lazyOnload"
         onLoad={() => {
-          // @ts-ignore
           if (window?.instgrm?.Embeds?.process) {
-            // @ts-ignore
             window.instgrm.Embeds.process();
           }
         }}
