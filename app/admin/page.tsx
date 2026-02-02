@@ -102,28 +102,14 @@ export default async function AdminPage({
     return <LoginView err={err} />;
   }
 
-  const admins = parseAdminEmails();
+ const admins = parseAdminEmails();
 
-function maskEmail(e: string) {
-  const [u, d] = (e || "").split("@");
-  if (!u || !d) return "invalid";
-  return `${u.slice(0, 2)}***@${d}`;
+if (admins.length === 0) {
+  return <LoginView err={"server_misconfigured_admin_emails"} />;
 }
 
-const raw = String(process.env.ADMIN_EMAILS || "");
-
 if (!admins.includes(email)) {
-  return (
-    <LoginView
-      err={[
-        "not_allowed",
-        `you=${maskEmail(email)}`,
-        `admins=${admins.map(maskEmail).join(",") || "EMPTY"}`,
-        `rawLen=${raw.length}`,
-        `rawHasNL=${raw.includes("\n") ? "yes" : "no"}`,
-      ].join(" | ")}
-    />
-  );
+  return <LoginView err={"not_allowed"} />;
 }
 
 
