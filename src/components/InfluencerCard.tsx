@@ -360,17 +360,18 @@ function ImageModal({
         >
           <div className="relative flex-1 overflow-hidden rounded-3xl border border-white/10 bg-black shadow-2xl">
             <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onClose();
-              }}
-              style={{ position: "fixed", top: 16, right: 16, zIndex: 2147483647 }}
-              className="rounded-full bg-red-600 px-4 py-3 text-lg font-extrabold text-white shadow-2xl hover:bg-red-700"
-              type="button"
-              aria-label="Close"
-            >
-              ✕
-            </button>
+  onClick={(e) => {
+    e.stopPropagation();
+    onClose();
+  }}
+  className="absolute top-4 right-4 z-50 rounded-full bg-red-600 px-4 py-3 text-lg font-extrabold text-white shadow-2xl hover:bg-red-700"
+  type="button"
+  aria-label="Close"
+>
+  ✕
+</button>
+
+
 
             <Image src={src} alt={alt} fill className="object-contain pointer-events-none" sizes="100vw" priority />
           </div>

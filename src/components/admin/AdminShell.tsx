@@ -68,10 +68,10 @@ export default function AdminShell({
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-2">
             <div className="w-10 h-10 bg-emerald-600 rounded-xl flex items-center justify-center text-white font-bold text-xl shadow-lg shadow-emerald-200">
-              E
+              TH
             </div>
             <span className="font-bold text-xl text-emerald-900 hidden md:block">
-              Emerald
+              Team Humanity
             </span>
           </div>
 
