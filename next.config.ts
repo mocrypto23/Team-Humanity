@@ -1,6 +1,12 @@
 /** @type {import('next').NextConfig} */
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-const supabaseHost = supabaseUrl ? new URL(supabaseUrl).hostname : null;
+let supabaseHost = null;
+
+try {
+  supabaseHost = supabaseUrl ? new URL(supabaseUrl).hostname : null;
+} catch {
+  supabaseHost = null;
+}
 
 const nextConfig = {
   images: {
@@ -9,6 +15,7 @@ const nextConfig = {
           {
             protocol: "https",
             hostname: supabaseHost,
+            pathname: "/storage/v1/object/public/**",
           },
         ]
       : [],

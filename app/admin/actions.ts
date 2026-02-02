@@ -63,14 +63,15 @@ async function getNextSortOrder(): Promise<number> {
   const { data, error } = await supabaseAdmin
     .from("influencers")
     .select("sort_order")
-    .order("sort_order", { ascending: false })
+    .order("sort_order", { ascending: true })
     .limit(1);
 
   if (error) return 10;
 
-  const max = Number(data?.[0]?.sort_order ?? 0);
-  if (!Number.isFinite(max)) return 10;
-  return max + 10;
+  const min = Number(data?.[0]?.sort_order ?? 0);
+  if (!Number.isFinite(min)) return 10;
+
+  return min - 10;
 }
 
 async function getExistingSortOrder(id: number): Promise<number | null> {
@@ -86,10 +87,7 @@ async function getExistingSortOrder(id: number): Promise<number | null> {
   return Number.isFinite(n as any) ? (n as number) : null;
 }
 
-/**
- * normalize: لو في nulls / duplicates في sort_order
- * نعيد ترقيم كل influencers: 10, 20, 30...
- */
+
 async function normalizeInfluencerSortOrders() {
   const { data, error } = await supabaseAdmin
     .from("influencers")
