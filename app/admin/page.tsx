@@ -103,9 +103,29 @@ export default async function AdminPage({
   }
 
   const admins = parseAdminEmails();
-  if (!admins.includes(email)) {
-    return <LoginView err={"not_allowed"} />;
-  }
+
+function maskEmail(e: string) {
+  const [u, d] = (e || "").split("@");
+  if (!u || !d) return "invalid";
+  return `${u.slice(0, 2)}***@${d}`;
+}
+
+const raw = String(process.env.ADMIN_EMAILS || "");
+
+if (!admins.includes(email)) {
+  return (
+    <LoginView
+      err={[
+        "not_allowed",
+        `you=${maskEmail(email)}`,
+        `admins=${admins.map(maskEmail).join(",") || "EMPTY"}`,
+        `rawLen=${raw.length}`,
+        `rawHasNL=${raw.includes("\n") ? "yes" : "no"}`,
+      ].join(" | ")}
+    />
+  );
+}
+
 
   const influencers = await getInfluencers();
   return <AdminInfluencersClient influencers={influencers} />;
