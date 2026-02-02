@@ -6,6 +6,7 @@ import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
 import type { InfluencerRow } from "@/lib/types";
 import { publicStorageUrl } from "@/lib/storage";
+import { createPortal } from "react-dom";
 
 function extractYouTubeId(url?: string | null) {
   if (!url) return null;
@@ -198,20 +199,30 @@ function ImageModal({
   src: string | null;
   alt: string;
 }) {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => setMounted(true), []);
+
   useEffect(() => {
     if (!open) return;
 
-    const prevOverflow = document.body.style.overflow;
+    const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
 
-    return () => {
-      document.body.style.overflow = prevOverflow;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
     };
-  }, [open]);
+    window.addEventListener("keydown", onKey);
 
-  if (!open || !src) return null;
+    return () => {
+      document.body.style.overflow = prev;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open, onClose]);
 
-  return (
+  if (!mounted || !open || !src) return null;
+
+  return createPortal(
     <AnimatePresence>
       <motion.div
         style={{ position: "fixed", inset: 0, zIndex: 2147483647 }}
@@ -243,21 +254,29 @@ function ImageModal({
                 e.stopPropagation();
                 onClose();
               }}
-              style={{ position: "fixed", top: 16, right: 16, zIndex: 2147483647 }}
-              className="rounded-full bg-red-600 px-4 py-3 text-lg font-extrabold text-white shadow-2xl hover:bg-red-700"
+              className="absolute top-4 right-4 z-50 rounded-full bg-red-600 px-4 py-3 text-lg font-extrabold text-white shadow-2xl hover:bg-red-700"
               type="button"
               aria-label="Close"
             >
               ✕
             </button>
 
-            <Image src={src} alt={alt} fill className="object-contain pointer-events-none" sizes="100vw" priority />
+            <Image
+              src={src}
+              alt={alt}
+              fill
+              className="object-contain pointer-events-none"
+              sizes="100vw"
+              priority
+            />
           </div>
         </motion.div>
       </motion.div>
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   );
 }
+
 
 export default function StoryPageClient({ influencer }: { influencer: InfluencerRow }) {
   const [activeImg, setActiveImg] = useState(0);
