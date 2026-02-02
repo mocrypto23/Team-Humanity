@@ -1,5 +1,5 @@
 // app/(site)/layout.tsx
-import type { ReactNode } from "react";
+import { Suspense, type ReactNode } from "react";
 import type { Metadata } from "next";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
@@ -35,7 +35,9 @@ export default function SiteLayout({ children }: { children: ReactNode }) {
   return (
     <>
   <Navbar />
+<Suspense fallback={null}>
   <ScrollToTop />
+</Suspense>
   {children}
   <Footer />
 </>
