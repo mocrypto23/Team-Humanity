@@ -1,3 +1,4 @@
+// src/components/HomeHero.tsx
 "use client";
 
 import Image from "next/image";
@@ -5,7 +6,6 @@ import { motion, useReducedMotion } from "framer-motion";
 
 export default function HomeHero() {
   const reduceMotion = useReducedMotion();
-
   const floatY = reduceMotion ? 0 : [0, -7, 0];
 
   return (
@@ -33,10 +33,7 @@ export default function HomeHero() {
 
             <motion.h1
               initial={{ opacity: 0, y: 14 }}
-              animate={{
-                opacity: 1,
-                y: floatY,
-              }}
+              animate={{ opacity: 1, y: floatY }}
               transition={{
                 opacity: { duration: 0.45, delay: 0.05 },
                 y: { duration: 3.1, repeat: Infinity, ease: "easeInOut" },
@@ -51,10 +48,7 @@ export default function HomeHero() {
 
             <motion.p
               initial={{ opacity: 0, y: 14 }}
-              animate={{
-                opacity: 1,
-                y: reduceMotion ? 0 : [0, -3, 0],
-              }}
+              animate={{ opacity: 1, y: reduceMotion ? 0 : [0, -3, 0] }}
               transition={{
                 opacity: { duration: 0.45, delay: 0.12 },
                 y: { duration: 7.5, repeat: Infinity, ease: "easeInOut" },
@@ -62,7 +56,8 @@ export default function HomeHero() {
               className="mt-4 max-w-xl text-sm leading-relaxed text-zinc-600 md:text-base"
               style={{ willChange: "transform" }}
             >
-              Real stories, real people. Support influencers and their families through trusted donation links.
+              Team Humanity is a curated space that highlights personal stories and trusted links to offer direct support —
+              simple, respectful, and transparent.
             </motion.p>
 
             <motion.div

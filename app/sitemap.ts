@@ -1,3 +1,4 @@
+// app/sitemap.ts
 import type { MetadataRoute } from "next";
 
 export default function sitemap(): MetadataRoute.Sitemap {
@@ -6,14 +7,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
 
   return [
     { url: `${base}/`, lastModified: now, changeFrequency: "daily", priority: 1 },
-    { url: `${base}/about`, lastModified: now, changeFrequency: "monthly", priority: 0.6 },
-    { url: `${base}/terms`, lastModified: now, changeFrequency: "monthly", priority: 0.4 },
-    { url: `${base}/privacy`, lastModified: now, changeFrequency: "monthly", priority: 0.4 },
-    { url: `${base}/contact`,
-  lastModified: new Date(),
-  changeFrequency: "monthly",
-  priority: 0.4,
-},
 
+    { url: `${base}/about`, lastModified: now, changeFrequency: "monthly", priority: 0.6 },
+    { url: `${base}/contact`, lastModified: now, changeFrequency: "monthly", priority: 0.4 },
+
+    { url: `${base}/terms`, lastModified: now, changeFrequency: "yearly", priority: 0.3 },
+    { url: `${base}/privacy`, lastModified: now, changeFrequency: "yearly", priority: 0.3 },
+    { url: `${base}/disclaimer`, lastModified: now, changeFrequency: "yearly", priority: 0.3 },
   ];
 }
