@@ -36,21 +36,50 @@ function safeJsonArray(input: string): string[] {
   }
 }
 
+function inferDonateLabel(url: string) {
+  try {
+    const u = new URL(url);
+    const host = u.hostname.toLowerCase();
+
+    if (host.includes("gofundme.com")) return "GoFundMe";
+    if (host.includes("chuffed.org")) return "Chuffed";
+    if (host.includes("paypal.com") || host.includes("paypal.me")) return "PayPal";
+
+    return "Donate";
+  } catch {
+    return "Donate";
+  }
+}
+
 function safeDonationLinks(input: string): { label: string; url: string }[] {
   try {
     const v = JSON.parse(input);
     if (!Array.isArray(v)) return [];
 
     return v
-      .map((x) => ({
-        label: String(x?.label || "").trim(),
-        url: String(x?.url || "").trim(),
-      }))
+      .map((x) => {
+        const url = String(x?.url || "").trim();
+
+        // label القادم من الفورم
+        const rawLabel = String(x?.label || x?.platform || x?.name || "").trim();
+
+        // لو label فاضي أو "Donate" هنستنتجه من الدومين
+        const inferred = url ? inferDonateLabel(url) : "Donate";
+
+        const finalLabel =
+          !rawLabel || rawLabel.toLowerCase() === "donate"
+            ? inferred
+            : rawLabel;
+
+        return { url, label: finalLabel };
+      })
       .filter((x) => x.url);
   } catch {
     return [];
   }
 }
+
+
 
 function clampInt(n: number, min = 1, max = 100000) {
   if (!Number.isFinite(n)) return min;

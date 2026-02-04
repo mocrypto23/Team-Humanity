@@ -297,22 +297,41 @@ export default function StoryPageClient({ influencer }: { influencer: Influencer
   const confirmedText = influencer.confirmed_label || "Confirmed by Team Humanity";
   const isHighlight = influencer.highlight_slot === 1 || influencer.highlight_slot === 2;
 
-  const donationButtons = useMemo(() => {
-    const list = (influencer.donation_links ?? []).filter(Boolean) as any[];
-    const cleaned = Array.isArray(list)
-      ? list
-          .map((x) => ({
-            label: String(x?.label || "").trim() || "Donate",
-            url: String(x?.url || "").trim(),
-          }))
-          .filter((x) => x.url)
-      : [];
+ function inferDonateLabel(url: string) {
+  try {
+    const u = new URL(url);
+    const host = u.hostname.toLowerCase();
 
-    if (!cleaned.length && influencer.donation_link) {
-      return [{ label: "Donate", url: influencer.donation_link }];
-    }
-    return cleaned;
-  }, [influencer.donation_links, influencer.donation_link]);
+    if (host.includes("gofundme.com")) return "GoFundMe";
+    if (host.includes("chuffed.org")) return "Chuffed";
+    if (host.includes("paypal.com") || host.includes("paypal.me")) return "PayPal";
+
+    return "Donate";
+  } catch {
+    return "Donate";
+  }
+}
+
+const donationButtons = useMemo(() => {
+  const list = (influencer.donation_links ?? []).filter(Boolean) as any[];
+  const cleaned = Array.isArray(list)
+    ? list
+        .map((x) => {
+          const url = String(x?.url || "").trim();
+          const rawLabel = String(x?.label || x?.platform || x?.name || "").trim(); // ✅ fallback keys
+          return {
+            label: rawLabel || (url ? inferDonateLabel(url) : "Donate"),
+            url,
+          };
+        })
+        .filter((x) => x.url)
+    : [];
+
+  if (!cleaned.length && influencer.donation_link) {
+    return [{ label: inferDonateLabel(influencer.donation_link), url: influencer.donation_link }];
+  }
+  return cleaned;
+}, [influencer.donation_links, influencer.donation_link]);
 
   return (
     <main className="min-h-screen bg-gradient-to-b from-emerald-50 via-white to-white text-zinc-900">
@@ -432,7 +451,7 @@ export default function StoryPageClient({ influencer }: { influencer: Influencer
                     className="rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700"
                     type="button"
                   >
-                    Watch here
+                    Watch Video here
                   </button>
                   <a
                     href={ytWatchUrl}
@@ -450,7 +469,7 @@ export default function StoryPageClient({ influencer }: { influencer: Influencer
                     className="rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700"
                     type="button"
                   >
-                    Watch here
+                    Watch Video here
                   </button>
                   <a
                     href={ig.canonical}

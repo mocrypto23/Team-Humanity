@@ -381,6 +381,34 @@ function ImageModal({
     document.body
   );
 }
+function IconChevronDown(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" {...props}>
+      <path
+        d="M6 10l6 6 6-6"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+
+function IconChevronUp(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" {...props}>
+      <path
+        d="M6 14l6-6 6 6"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
 
 export default function InfluencerCard({
   influencer,
@@ -411,22 +439,50 @@ export default function InfluencerCard({
 
   const confirmedText = influencer.confirmed_label || "Confirmed by Team Humanity";
 
-  const donationButtons = useMemo(() => {
-    const list = (influencer.donation_links ?? []).filter(Boolean) as any[];
-    const cleaned = Array.isArray(list)
-      ? list
-          .map((x) => ({
-            label: String(x?.label || "").trim() || "Donate",
-            url: String(x?.url || "").trim(),
-          }))
-          .filter((x) => x.url)
-      : [];
+function normalizeUrl(u: string) {
+  const s = String(u || "").trim();
+  if (!s) return "";
+  if (!/^https?:\/\//i.test(s)) return `https://${s}`;
+  return s;
+}
 
-    if (!cleaned.length && influencer.donation_link) {
-      return [{ label: "Donate", url: influencer.donation_link }];
-    }
-    return cleaned;
-  }, [influencer.donation_links, influencer.donation_link]);
+function inferDonateLabel(url: string) {
+  try {
+    const fixed = normalizeUrl(url);
+    const u = new URL(fixed);
+    const host = u.hostname.toLowerCase();
+
+    if (host.includes("gofundme.com")) return "GoFundMe";
+    if (host.includes("chuffed.org")) return "Chuffed";
+    if (host.includes("paypal.com") || host.includes("paypal.me")) return "PayPal";
+
+    return "Donate";
+  } catch {
+    return "Donate";
+  }
+}
+
+
+const donationButtons = useMemo(() => {
+  const list = (influencer.donation_links ?? []).filter(Boolean) as any[];
+  const cleaned = Array.isArray(list)
+    ? list
+        .map((x) => {
+          const url = String(x?.url || "").trim();
+          const rawLabel = String(x?.label || x?.platform || x?.name || "").trim(); // ✅ fallback keys
+          return {
+            label: rawLabel || (url ? inferDonateLabel(url) : "Donate"),
+            url,
+          };
+        })
+        .filter((x) => x.url)
+    : [];
+
+  if (!cleaned.length && influencer.donation_link) {
+    return [{ label: inferDonateLabel(influencer.donation_link), url: influencer.donation_link }];
+  }
+  return cleaned;
+}, [influencer.donation_links, influencer.donation_link]);
 
   const igEmbedUrl = ig?.embed ?? null;
   const ytEmbedUrl = ytId ? `https://www.youtube.com/embed/${ytId}` : null;
@@ -521,15 +577,28 @@ export default function InfluencerCard({
               </Link>
 
               <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onToggle();
-                }}
-                className="inline-flex items-center justify-center whitespace-nowrap rounded-2xl border border-emerald-200 bg-white px-4 py-2 text-xs font-semibold text-emerald-800 hover:bg-emerald-50"
-                type="button"
-              >
-                {expanded ? "Collapse" : "Expand"}
-              </button>
+  onClick={(e) => {
+    e.stopPropagation();
+    onToggle();
+  }}
+  className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-2xl border border-emerald-200 bg-white px-4 py-2 text-xs font-semibold text-emerald-800 hover:bg-emerald-50"
+  type="button"
+  aria-expanded={expanded}
+  aria-label={expanded ? "Collapse card" : "Expand card"}
+>
+  {expanded ? (
+    <>
+      <IconChevronUp className="h-4 w-4" />
+      <span>Collapse</span>
+    </>
+  ) : (
+    <>
+      <IconChevronDown className="h-4 w-4" />
+      <span>Expand</span>
+    </>
+  )}
+</button>
+
             </div>
           </div>
 
@@ -636,7 +705,7 @@ export default function InfluencerCard({
                         className="rounded-2xl bg-emerald-600 px-4 py-3 text-center text-sm font-semibold text-white hover:bg-emerald-700"
                         type="button"
                       >
-                        Watch here
+                        Watch Video here
                       </button>
 
                       <a
@@ -655,7 +724,7 @@ export default function InfluencerCard({
                         className="rounded-2xl bg-emerald-600 px-4 py-3 text-center text-sm font-semibold text-white hover:bg-emerald-700"
                         type="button"
                       >
-                        Watch here
+                        Watch Video here
                       </button>
 
                       <a
@@ -697,6 +766,35 @@ export default function InfluencerCard({
                     No donation links yet.
                   </div>
                 )}
+<div className="pt-2">
+  {/* Fade subtle so it feels like an end-of-card action */}
+  <div className="pointer-events-none -mt-2 h-6 w-full bg-gradient-to-b from-transparent to-white" />
+
+  <button
+    onClick={(e) => {
+      e.stopPropagation();
+      onToggle();
+    }}
+    type="button"
+    className={[
+      "group mx-auto flex items-center gap-2",
+      "rounded-full px-3 py-2",
+      "text-xs font-semibold text-zinc-600 hover:text-zinc-900",
+      "bg-white/70 hover:bg-white",
+      "border border-zinc-200/70 hover:border-zinc-300",
+      "shadow-sm hover:shadow",
+      "transition",
+      "active:scale-[0.98]",
+    ].join(" ")}
+    aria-label="Collapse card"
+    title="Collapse"
+  >
+    <IconChevronUp className="h-4 w-4 transition-transform group-hover:-translate-y-[1px]" />
+    <span>Collapse</span>
+  </button>
+</div>
+
+
               </motion.div>
             ) : null}
           </AnimatePresence>
