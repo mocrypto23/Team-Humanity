@@ -3,6 +3,16 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+function goToHash(id: string) {
+  const hash = `#${id}`;
+  if (window.location.hash === hash) {
+    window.dispatchEvent(new HashChangeEvent("hashchange"));
+    return;
+  }
+  history.pushState(null, "", hash);
+  window.dispatchEvent(new HashChangeEvent("hashchange"));
+}
+
 export default function Navbar() {
   const pathname = usePathname();
   const isHome = pathname === "/";
@@ -21,10 +31,13 @@ export default function Navbar() {
         </Link>
 
         <nav className="flex items-center gap-2">
-          {/* Stories */}
           {isHome ? (
             <a
               href="#stories"
+              onClick={(e) => {
+                e.preventDefault();
+                goToHash("stories");
+              }}
               className="rounded-xl px-3 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-50"
             >
               Stories
@@ -39,10 +52,13 @@ export default function Navbar() {
             </Link>
           )}
 
-          {/* How it works */}
           {isHome ? (
             <a
               href="#how"
+              onClick={(e) => {
+                e.preventDefault();
+                goToHash("how");
+              }}
               className="hidden rounded-xl px-3 py-2 text-sm font-semibold text-zinc-700 hover:bg-zinc-50 sm:inline-flex"
             >
               How it works

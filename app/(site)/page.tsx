@@ -4,6 +4,7 @@ import type { InfluencerRow } from "@/lib/types";
 import HomeHero from "@/components/HomeHero";
 import StatsStrip from "@/components/StatsStrip";
 import HashScroll from "@/components/HashScroll";
+import PaginationControls from "@/components/PaginationControls";
 
 export const revalidate = false;
 
@@ -16,8 +17,9 @@ function clampPage(n: number) {
 
 function buildHref(page: number) {
   const p = clampPage(page);
-  return p <= 1 ? "/" : `/?page=${p}`;
+  return p <= 1 ? "/#stories" : `/?page=${p}#stories`;
 }
+
 
 async function getHighlights(): Promise<InfluencerRow[]> {
   const { data, error } = await supabaseServer
@@ -236,27 +238,8 @@ export default async function HomePage({
             Total stories: <span className="font-semibold">{totalRest}</span>
           </p>
 
-          <div className="flex items-center gap-2">
-            <a
-              href={buildHref(hasPrev ? page - 1 : 1)}
-              className={[
-                "rounded-2xl border px-4 py-2 text-sm font-semibold",
-                hasPrev ? "border-zinc-200 bg-white hover:bg-zinc-50" : "border-zinc-100 bg-zinc-50 text-zinc-400 pointer-events-none",
-              ].join(" ")}
-            >
-              Prev
-            </a>
+          <PaginationControls page={page} hasPrev={hasPrev} hasNext={hasNext} />
 
-            <a
-              href={buildHref(hasNext ? page + 1 : page)}
-              className={[
-                "rounded-2xl border px-4 py-2 text-sm font-semibold",
-                hasNext ? "border-zinc-200 bg-white hover:bg-zinc-50" : "border-zinc-100 bg-zinc-50 text-zinc-400 pointer-events-none",
-              ].join(" ")}
-            >
-              Next
-            </a>
-          </div>
         </div>
       </section>
 

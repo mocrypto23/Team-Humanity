@@ -60,10 +60,8 @@ function safeDonationLinks(input: string): { label: string; url: string }[] {
       .map((x) => {
         const url = String(x?.url || "").trim();
 
-        // label القادم من الفورم
         const rawLabel = String(x?.label || x?.platform || x?.name || "").trim();
 
-        // لو label فاضي أو "Donate" هنستنتجه من الدومين
         const inferred = url ? inferDonateLabel(url) : "Donate";
 
         const finalLabel =

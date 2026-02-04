@@ -8,9 +8,9 @@ export default function SiteLayout({ children }: { children: ReactNode }) {
   return (
     <>
       <Navbar />
-      <Suspense fallback={null}>
+    <Suspense fallback={null}>
         <ScrollToTop />
-      </Suspense>
+      </Suspense>       
       {children}
       <Footer />
     </>
