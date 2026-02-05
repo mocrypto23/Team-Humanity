@@ -217,13 +217,7 @@ export async function moveInfluencerSort(formData: FormData) {
   redirect(returnTo);
 }
 
-/**
- * ✅ PIN action: يخزن في highlight_slot (1 أو 2 أو null)
- * formData:
- * - id
- * - slot: "1" | "2" | "" (unpin)
- * - return_to
- */
+
 export async function setInfluencerPin(formData: FormData) {
   await requireAdminEmail();
 

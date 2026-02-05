@@ -118,16 +118,13 @@ export default function AdminInfluencersClient({
   useEffect(() => {
     if (ok !== "saved") return;
 
-    // 1) اقفل المودال فورًا
     const next = new URLSearchParams(sp.toString());
     next.delete("edit");
     next.delete("new");
     router.replace(`${pathname}?${next.toString()}#top`);
 
-    // 2) ابدأ العدّاد
     setToastSec(3);
 
-    // امسح أي تايمرز قديمة (احتياط)
     if (timerRef.current) window.clearInterval(timerRef.current);
     if (navRef.current) window.clearTimeout(navRef.current);
 
@@ -135,7 +132,6 @@ export default function AdminInfluencersClient({
       setToastSec((s) => (s > 0 ? s - 1 : 0));
     }, 1000);
 
-    // 3) بعد 3 ثواني: نظف الـ URL
     navRef.current = window.setTimeout(() => {
       router.replace(`${pathname}#top`);
     }, 3000);

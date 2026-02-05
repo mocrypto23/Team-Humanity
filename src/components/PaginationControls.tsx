@@ -18,7 +18,6 @@ export default function PaginationControls({
   hasPrev: boolean;
   hasNext: boolean;
 }) {
-  // ✅ بعد التنقل: ارجع فورا لمكان stories (بدون smooth)
   useLayoutEffect(() => {
     const y = sessionStorage.getItem("scrollY:storiesTop");
     if (!y) return;

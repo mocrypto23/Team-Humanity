@@ -38,7 +38,6 @@ function useCountUp(target: number, enabled: boolean, durationMs = 900) {
 
     const tick = (now: number) => {
       const t = Math.min(1, (now - start) / durationMs);
-      // easing لطيف
       const eased = 1 - Math.pow(1 - t, 3);
       setValue(Math.round(target * eased));
       if (t < 1) raf = requestAnimationFrame(tick);
@@ -52,7 +51,7 @@ function useCountUp(target: number, enabled: boolean, durationMs = 900) {
 }
 
 function Ring({
-  progress, // 0..1
+  progress, 
   children,
 }: {
   progress: number;
@@ -68,7 +67,6 @@ function Ring({
   return (
     <div className="relative grid place-items-center">
       <svg width={size} height={size} className="block">
-        {/* track */}
         <circle
           cx={size / 2}
           cy={size / 2}
@@ -77,7 +75,6 @@ function Ring({
           stroke="rgba(16,185,129,0.18)"
           strokeWidth={stroke}
         />
-        {/* progress */}
         <circle
           cx={size / 2}
           cy={size / 2}
