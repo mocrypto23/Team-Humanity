@@ -1,16 +1,36 @@
-// src/components/HomeHero.tsx
 "use client";
 
 import Image from "next/image";
 import { motion, useReducedMotion } from "framer-motion";
+import { usePathname, useRouter } from "next/navigation";
+
+function scrollToId(id: string, behavior: ScrollBehavior) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.scrollIntoView({ behavior, block: "start" });
+}
 
 export default function HomeHero() {
   const reduceMotion = useReducedMotion();
   const floatY = reduceMotion ? 0 : [0, -7, 0];
+  const pathname = usePathname();
+  const router = useRouter();
+
+  const behavior: ScrollBehavior = reduceMotion ? "auto" : "smooth";
+
+  function go(hash: "stories" | "how") {
+    if (pathname === "/") {
+      if (window.location.hash !== `#${hash}`) {
+        history.replaceState(null, "", `#${hash}`);
+      }
+      scrollToId(hash, behavior);
+      return;
+    }
+    router.push(`/#${hash}`, { scroll: false });
+  }
 
   return (
     <section className="relative overflow-hidden">
-      {/* Background accents */}
       <div className="pointer-events-none absolute inset-0 -z-10">
         <div className="absolute -top-40 left-1/2 h-[520px] w-[520px] -translate-x-1/2 rounded-full bg-emerald-200/35 blur-3xl" />
         <div className="absolute top-24 right-[-120px] h-[360px] w-[360px] rounded-full bg-emerald-100/70 blur-3xl" />
@@ -19,7 +39,6 @@ export default function HomeHero() {
 
       <div className="mx-auto max-w-6xl px-4 py-10 md:py-14">
         <div className="grid items-center gap-8 lg:grid-cols-2">
-          {/* Text */}
           <div>
             <motion.div
               initial={{ opacity: 0, y: 10 }}
@@ -66,22 +85,24 @@ export default function HomeHero() {
               transition={{ duration: 0.4, delay: 0.15 }}
               className="mt-6 flex flex-col gap-2 sm:flex-row"
             >
-              <a
-                href="#stories"
+              <button
+                type="button"
+                onClick={() => go("stories")}
                 className="rounded-2xl bg-emerald-600 px-5 py-3 text-center text-sm font-semibold text-white shadow-soft hover:bg-emerald-700"
               >
                 Explore stories
-              </a>
-              <a
-                href="#how"
+              </button>
+
+              <button
+                type="button"
+                onClick={() => go("how")}
                 className="rounded-2xl border border-emerald-200 bg-white/80 px-5 py-3 text-center text-sm font-semibold text-emerald-800 hover:bg-emerald-50"
               >
                 How it works
-              </a>
+              </button>
             </motion.div>
           </div>
 
-          {/* Image */}
           <motion.div
             initial={{ opacity: 0, scale: 0.98 }}
             animate={{ opacity: 1, scale: 1 }}
@@ -100,7 +121,6 @@ export default function HomeHero() {
                 />
               </div>
 
-              {/* Overlay card */}
               <div className="absolute inset-x-4 bottom-4">
                 <div className="pointer-events-none absolute -inset-x-4 -bottom-4 h-36 bg-gradient-to-t from-black/30 via-black/10 to-transparent" />
 

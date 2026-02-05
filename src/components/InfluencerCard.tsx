@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useEffect, useRef, useCallback } from "react";
+import { useMemo, useState, useEffect, useRef, useCallback, type CSSProperties } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
@@ -430,6 +430,18 @@ export default function InfluencerCard({
   // ✅ tilt disabled on touch & reduced motion
   const tiltDisabled = isTouch || !!reduceMotion;
   const tilt = useTilt3D(tiltDisabled);
+const wrapperProps = tiltDisabled
+  ? {}
+  : {
+      onMouseEnter: tilt.onEnter,
+      onMouseMove: tilt.onMove,
+      onMouseLeave: tilt.onLeave,
+      style: {
+        transform: "perspective(1100px) rotateX(0deg) rotateY(0deg) scale(1)",
+        transformStyle: "preserve-3d",
+        willChange: "transform",
+} as CSSProperties,
+    };
 
   const images = useMemo(() => (influencer.image_paths ?? []).filter(Boolean), [influencer.image_paths]);
   const activeUrl = images[activeImg] ? publicStorageUrl("influencers", images[activeImg]!) : null;
@@ -495,20 +507,14 @@ const donationButtons = useMemo(() => {
   return (
     <>
       {/* ✅ Wrapper responsible for 3D tilt */}
-      <div
-        ref={(node) => {
-          // typesafe for our hook
-          tilt.ref.current = node as unknown as HTMLElement | null;
-        }}
-        onMouseEnter={tilt.onEnter}
-        onMouseMove={tilt.onMove}
-        onMouseLeave={tilt.onLeave}
-        style={{
-          transform: "perspective(1100px) rotateX(0deg) rotateY(0deg) scale(1)",
-          transformStyle: "preserve-3d",
-          willChange: "transform",
-        }}
-      >
+          <div
+  ref={(node) => {
+    tilt.ref.current = node as unknown as HTMLElement | null;
+  }}
+  {...wrapperProps}
+>
+
+
         <motion.article
           onClick={onToggle}
           transition={{ type: "spring", stiffness: 260, damping: 24 }}
@@ -693,7 +699,7 @@ const donationButtons = useMemo(() => {
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 6 }}
-                transition={{ duration: 0.18 }}
+transition={isTouch ? { duration: 0.12 } : { duration: 0.18 }}
                 className="relative mt-4 space-y-3"
                 onClick={(e) => e.stopPropagation()}
               >

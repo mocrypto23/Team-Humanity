@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import { usePathname } from "next/navigation";
+import { useEffect } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
 
 function scrollToHash(hash: string) {
   const id = hash.replace("#", "");
@@ -16,7 +16,7 @@ function scrollToHash(hash: string) {
 
 export default function HashScroll() {
   const pathname = usePathname();
-  const doneRef = useRef<string | null>(null);
+  const sp = useSearchParams();
 
   useEffect(() => {
     if (pathname !== "/") return;
@@ -24,36 +24,30 @@ export default function HashScroll() {
     const hash = window.location.hash;
     if (!hash) return;
 
-    if (doneRef.current === hash) return;
+    if (scrollToHash(hash)) return;
 
-    if (scrollToHash(hash)) {
-      doneRef.current = hash;
-      return;
-    }
+    let tries = 0;
+    let raf = 0;
 
-    const obs = new MutationObserver(() => {
-      if (scrollToHash(hash)) {
-        doneRef.current = hash;
-        obs.disconnect();
-      }
-    });
+    const tick = () => {
+      tries += 1;
+      if (scrollToHash(hash)) return;
+      if (tries > 60) return;
+      raf = requestAnimationFrame(tick);
+    };
 
-    obs.observe(document.body, { childList: true, subtree: true });
-
-    const t = window.setTimeout(() => obs.disconnect(), 10_000);
+    raf = requestAnimationFrame(tick);
 
     return () => {
-      window.clearTimeout(t);
-      obs.disconnect();
+      if (raf) cancelAnimationFrame(raf);
     };
-  }, [pathname]);
+  }, [pathname, sp]);
 
   useEffect(() => {
     const onHashChange = () => {
       if (window.location.pathname !== "/") return;
       const hash = window.location.hash;
       if (!hash) return;
-
       scrollToHash(hash);
     };
 
