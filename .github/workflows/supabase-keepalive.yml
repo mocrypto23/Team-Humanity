@@ -14,6 +14,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - name: Validate secrets
+        run: |
+          test -n "$SUPABASE_URL" || (echo "SUPABASE_URL is empty" && exit 1)
+          test -n "$SUPABASE_ANON_KEY" || (echo "SUPABASE_ANON_KEY is empty" && exit 1)
+          echo "URL prefix: ${SUPABASE_URL:0:30}"
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+
       - name: Ping Supabase table
         run: |
           curl -sS -f \
