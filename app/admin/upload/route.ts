@@ -5,6 +5,41 @@ import { supabaseAuthServer } from "@/lib/supabaseAuthServer";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const VIDEO_TYPES = new Set(["video/mp4", "video/webm", "video/quicktime"]);
+
+const IMAGE_MAX_BYTES = 6 * 1024 * 1024;
+const VIDEO_MAX_BYTES = 80 * 1024 * 1024;
+
+function classifyUpload(file: File): null | {
+  folder: "uploads" | "videos";
+  maxBytes: number;
+  fallbackType: string;
+} {
+  const type = String(file.type || "").toLowerCase();
+  const ext = (file.name.split(".").pop() || "").toLowerCase();
+
+  const imageByExt = !type && ["jpg", "jpeg", "png", "webp"].includes(ext);
+  if (IMAGE_TYPES.has(type) || imageByExt) {
+    return {
+      folder: "uploads",
+      maxBytes: IMAGE_MAX_BYTES,
+      fallbackType: "image/jpeg",
+    };
+  }
+
+  const videoByExt = !type && ["mp4", "webm", "mov", "m4v"].includes(ext);
+  if (VIDEO_TYPES.has(type) || videoByExt) {
+    return {
+      folder: "videos",
+      maxBytes: VIDEO_MAX_BYTES,
+      fallbackType: "video/mp4",
+    };
+  }
+
+  return null;
+}
+
 function parseAdminEmails() {
   const raw = process.env.ADMIN_EMAILS || "";
   return raw
@@ -51,36 +86,35 @@ export async function POST(req: Request) {
       );
     }
 
-
-    const maxBytes = 6 * 1024 * 1024; 
-    if (file.size > maxBytes) {
-      return NextResponse.json(
-        { ok: false, error: "File too large (max 6MB)" },
-        { status: 400 }
-      );
-    }
-
-    const allowed = ["image/jpeg", "image/png", "image/webp"];
-    if (file.type && !allowed.includes(file.type)) {
+    const upload = classifyUpload(file);
+    if (!upload) {
       return NextResponse.json(
         { ok: false, error: "Unsupported file type" },
         { status: 400 }
       );
     }
 
+    if (file.size > upload.maxBytes) {
+      const maxMb = Math.floor(upload.maxBytes / (1024 * 1024));
+      return NextResponse.json(
+        { ok: false, error: `File too large (max ${maxMb}MB)` },
+        { status: 400 }
+      );
+    }
+
     const bucket = "influencers";
-    const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
+    const ext = (file.name.split(".").pop() || "").toLowerCase() || (upload.folder === "videos" ? "mp4" : "jpg");
     const safeName = `${Date.now()}-${Math.random()
       .toString(16)
       .slice(2)}.${ext}`;
-    const path = `uploads/${safeName}`;
+    const path = `${upload.folder}/${safeName}`;
 
     const arrayBuffer = await file.arrayBuffer();
 
     const { error } = await supabaseAdmin.storage
       .from(bucket)
       .upload(path, Buffer.from(arrayBuffer), {
-        contentType: file.type || "image/jpeg",
+        contentType: file.type || upload.fallbackType,
         upsert: false,
         cacheControl: "31536000",
       });
@@ -93,9 +127,10 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json({ ok: true, path });
-  } catch (e: any) {
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : "Upload failed";
     return NextResponse.json(
-      { ok: false, error: e?.message || "Upload failed" },
+      { ok: false, error: message },
       { status: 500 }
     );
   }

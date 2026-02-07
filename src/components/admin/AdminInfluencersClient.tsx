@@ -20,7 +20,7 @@ import {
   PinOff,
 } from "lucide-react";
 
-import AdminImageUploader from "@/components/AdminImageUploader";
+import AdminImageUploader, { type UploadState } from "@/components/AdminImageUploader";
 import {
   upsertInfluencer,
   deleteInfluencer,
@@ -37,18 +37,27 @@ type DonationFormItem = {
   url: string;
 };
 
+const EMPTY_UPLOAD_STATE: UploadState = {
+  busy: false,
+  progress: 0,
+  message: "",
+};
+
 function buildReturnTo(pathname: string, sp: URLSearchParams) {
   const q = sp.toString();
   return q ? `${pathname}?${q}` : pathname;
 }
 
-function normalizeLinks(input: any): DonationLinkItem[] {
+function normalizeLinks(input: unknown): DonationLinkItem[] {
   if (!Array.isArray(input)) return [];
   return input
-    .map((x) => ({
-      label: String(x?.label || "Donate").trim() || "Donate",
-      url: String(x?.url || "").trim(),
-    }))
+    .map((x) => {
+      const row = (x || {}) as { label?: unknown; url?: unknown };
+      return {
+        label: String(row.label || "Donate").trim() || "Donate",
+        url: String(row.url || "").trim(),
+      };
+    })
     .filter((x) => x.url);
 }
 
@@ -64,7 +73,7 @@ function getRowLinks(row: InfluencerRow): DonationLinkItem[] {
   return legacy ? [{ label: "Donate", url: legacy }] : [];
 }
 
-function resolveImageSrc(raw: string) {
+function resolveStorageSrc(raw: string) {
   const p = String(raw || "").trim();
   if (!p) return "";
 
@@ -83,10 +92,27 @@ function resolveImageSrc(raw: string) {
   return `${base}/storage/v1/object/public/${encodeURIComponent(bucket)}/${safePath}`;
 }
 
+function isLegacyExternalVideoUrl(raw: string) {
+  const v = String(raw || "").trim();
+  if (!v) return false;
+
+  try {
+    const host = new URL(v).hostname.toLowerCase();
+    return (
+      host.includes("youtube.com") ||
+      host.includes("youtu.be") ||
+      host.includes("instagram.com") ||
+      host.includes("instagr.am")
+    );
+  } catch {
+    return false;
+  }
+}
+
 function getFirstImage(row: InfluencerRow) {
   const arr = (row?.image_paths ?? []).filter(Boolean) as string[];
   const first = arr[0] ? String(arr[0]) : "";
-  return resolveImageSrc(first);
+  return resolveStorageSrc(first);
 }
 
 function clampText(s: string, max = 120) {
@@ -97,6 +123,40 @@ function clampText(s: string, max = 120) {
 
 function isPresetLabel(label: string) {
   return (DONATION_LABELS as readonly string[]).includes(label);
+}
+
+function UploadProgress({
+  state,
+  label,
+}: {
+  state: UploadState;
+  label: string;
+}) {
+  if (!state.busy && !state.message) return null;
+
+  if (state.busy) {
+    const isProcessing = state.message.toLowerCase().includes("processing");
+    return (
+      <div className="mt-3 space-y-1">
+        <div className="h-2 overflow-hidden rounded-full bg-zinc-200">
+          <div
+            className="h-full bg-emerald-600 transition-[width] duration-150"
+            style={{ width: `${state.progress}%` }}
+          />
+        </div>
+        <p className="text-xs font-semibold text-emerald-700">
+          {isProcessing ? `Processing ${label}...` : `Uploading ${label}... ${state.progress}%`}
+        </p>
+      </div>
+    );
+  }
+
+  const isError = state.message.toLowerCase().includes("failed") || state.message.toLowerCase().includes("error");
+  return (
+    <p className={`mt-3 text-xs font-semibold ${isError ? "text-red-600" : "text-emerald-700"}`}>
+      {state.message}
+    </p>
+  );
 }
 
 export default function AdminInfluencersClient({
@@ -209,6 +269,8 @@ export default function AdminInfluencersClient({
   ]);
 
   const [imagePaths, setImagePaths] = useState<string[]>([]);
+  const [imageUploadState, setImageUploadState] = useState<UploadState>(EMPTY_UPLOAD_STATE);
+  const [videoUploadState, setVideoUploadState] = useState<UploadState>(EMPTY_UPLOAD_STATE);
 
   const resetForm = () => {
     setStoryTitle("");
@@ -216,6 +278,8 @@ export default function AdminInfluencersClient({
     setVideoUrl("");
     setDonationLinks([{ labelPreset: "GoFundMe", customLabel: "", url: "" }]);
     setImagePaths([]);
+    setImageUploadState(EMPTY_UPLOAD_STATE);
+    setVideoUploadState(EMPTY_UPLOAD_STATE);
     setIsPublished(false);
     setIsConfirmed(false);
     setConfirmedLabel("");
@@ -223,6 +287,8 @@ export default function AdminInfluencersClient({
 
   useEffect(() => {
     if (!isModalOpen) return;
+    setImageUploadState(EMPTY_UPLOAD_STATE);
+    setVideoUploadState(EMPTY_UPLOAD_STATE);
 
     if (editing) {
       setStoryTitle(editing.name ?? "");
@@ -341,11 +407,14 @@ export default function AdminInfluencersClient({
 
   // images helpers
   const firstImageRaw = imagePaths[0] ? String(imagePaths[0]) : "";
-  const firstImage = resolveImageSrc(firstImageRaw);
+  const firstImage = resolveStorageSrc(firstImageRaw);
+  const videoPreview = resolveStorageSrc(videoUrl);
+  const hasLegacyExternalVideo = isLegacyExternalVideoUrl(videoUrl);
 
   const removeFirstImage = () => setImagePaths((prev) => prev.slice(1));
+  const removeVideo = () => setVideoUrl("");
 
-  const onUploaded = (pathOrUrl: string) => {
+  const onImageUploaded = (pathOrUrl: string) => {
     const p = String(pathOrUrl || "").trim();
     if (!p) return;
 
@@ -355,8 +424,17 @@ export default function AdminInfluencersClient({
     });
   };
 
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const openFilePicker = () => fileInputRef.current?.click();
+  const onVideoUploaded = (pathOrUrl: string) => {
+    const p = String(pathOrUrl || "").trim();
+    if (!p) return;
+    setVideoUrl(p);
+  };
+
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
+  const videoInputRef = useRef<HTMLInputElement | null>(null);
+
+  const openImagePicker = () => imageInputRef.current?.click();
+  const openVideoPicker = () => videoInputRef.current?.click();
 
   return (
     <div className="space-y-6" id="top">
@@ -491,7 +569,7 @@ export default function AdminInfluencersClient({
                 <div className="flex flex-wrap gap-2 text-xs font-medium">
                   {item.video_url ? (
                     <a
-                      href={String(item.video_url)}
+                      href={resolveStorageSrc(String(item.video_url))}
                       target="_blank"
                       rel="noreferrer"
                       className="flex items-center gap-1 bg-red-50 text-red-600 px-2.5 py-1.5 rounded-lg hover:bg-red-100 transition-colors"
@@ -605,6 +683,7 @@ export default function AdminInfluencersClient({
               <input type="hidden" name="id" value={editing?.id ?? ""} />
               <input type="hidden" name="donation_links" value={donationLinksJson} />
               <input type="hidden" name="image_paths" value={imagePathsJson} />
+              <input type="hidden" name="video_url" value={videoUrl} />
 
               {/* Story Title */}
               <div>
@@ -632,22 +711,71 @@ export default function AdminInfluencersClient({
                 />
               </div>
 
-              {/* Video URL */}
+              {/* Video Upload */}
               <div>
-                <label className="block text-sm font-bold text-zinc-800 mb-2">
-                  Video URL (YouTube/Reel)
-                </label>
-                <div className="relative">
-                  <Video className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
-                  <input
-                    name="video_url"
-                    type="text"
-                    value={videoUrl}
-                    onChange={(e) => setVideoUrl(e.target.value)}
-                    className="w-full pl-11 pr-4 py-3 rounded-xl bg-white border border-zinc-300 text-zinc-900 placeholder-zinc-400 focus:ring-2 focus:ring-emerald-500 outline-none shadow-sm transition-all"
-                    placeholder="https://..."
-                  />
-                </div>
+                <label className="block text-sm font-bold text-zinc-800 mb-3">Video</label>
+
+                <AdminImageUploader
+                  onUploaded={onVideoUploaded}
+                  inputRef={videoInputRef}
+                  hideUI
+                  autoUpload
+                  accept="video/mp4,video/webm,video/quicktime"
+                  onUploadStateChange={setVideoUploadState}
+                />
+
+                {!videoUrl ? (
+                  <button
+                    type="button"
+                    onClick={openVideoPicker}
+                    disabled={videoUploadState.busy}
+                    className="w-full h-32 border-2 border-dashed border-zinc-300 rounded-2xl flex flex-col items-center justify-center gap-2 text-zinc-500 hover:text-emerald-600 hover:border-emerald-400 hover:bg-emerald-50 transition-all group"
+                  >
+                    <div className="p-3 bg-zinc-100 rounded-full group-hover:bg-white transition-colors">
+                      <Video className="w-6 h-6" />
+                    </div>
+                    <span className="text-sm font-bold">Click to Upload Video</span>
+                    <span className="text-xs text-zinc-500">MP4 / WEBM / MOV</span>
+                  </button>
+                ) : (
+                  <div className="space-y-3">
+                    {hasLegacyExternalVideo ? (
+                      <a
+                        href={videoUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="block rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800 hover:bg-amber-100"
+                      >
+                        Legacy external video link detected. Open current link.
+                      </a>
+                    ) : (
+                      <div className="relative w-full rounded-2xl overflow-hidden border border-zinc-200 bg-black">
+                        <video src={videoPreview} controls className="w-full h-56 object-contain bg-black" />
+                      </div>
+                    )}
+
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={openVideoPicker}
+                        disabled={videoUploadState.busy}
+                        className="text-sm font-bold text-emerald-600 hover:text-emerald-700"
+                      >
+                        Change video
+                      </button>
+                      <button
+                        type="button"
+                        onClick={removeVideo}
+                        disabled={videoUploadState.busy}
+                        className="text-sm font-bold text-red-500 hover:text-red-600"
+                      >
+                        Remove video
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <UploadProgress state={videoUploadState} label="video" />
               </div>
 
               {/* Donation Links */}
@@ -730,12 +858,19 @@ export default function AdminInfluencersClient({
                 <label className="block text-sm font-bold text-zinc-800 mb-3">Images</label>
 
                 {/* uploader hidden but functional */}
-                <AdminImageUploader onUploaded={onUploaded} inputRef={fileInputRef} hideUI autoUpload />
+                <AdminImageUploader
+                  onUploaded={onImageUploaded}
+                  inputRef={imageInputRef}
+                  hideUI
+                  autoUpload
+                  onUploadStateChange={setImageUploadState}
+                />
 
                 {!firstImage ? (
                   <button
                     type="button"
-                    onClick={openFilePicker}
+                    onClick={openImagePicker}
+                    disabled={imageUploadState.busy}
                     className="w-full h-32 border-2 border-dashed border-zinc-300 rounded-2xl flex flex-col items-center justify-center gap-2 text-zinc-500 hover:text-emerald-600 hover:border-emerald-400 hover:bg-emerald-50 transition-all group"
                   >
                     <div className="p-3 bg-zinc-100 rounded-full group-hover:bg-white transition-colors">
@@ -761,13 +896,16 @@ export default function AdminInfluencersClient({
 
                     <button
                       type="button"
-                      onClick={openFilePicker}
+                      onClick={openImagePicker}
+                      disabled={imageUploadState.busy}
                       className="text-sm font-bold text-emerald-600 hover:text-emerald-700"
                     >
                       Change image
                     </button>
                   </div>
                 )}
+
+                <UploadProgress state={imageUploadState} label="image" />
               </div>
 
               {/* confirmed_label */}

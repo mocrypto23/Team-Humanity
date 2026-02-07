@@ -2,6 +2,12 @@
 
 import { useRef, useState } from "react";
 
+export type UploadState = {
+  busy: boolean;
+  progress: number;
+  message: string;
+};
+
 type Props = {
   onUploaded: (pathOrUrl: string) => void;
 
@@ -13,6 +19,10 @@ type Props = {
 
   
   hideUI?: boolean;
+
+  accept?: string;
+
+  onUploadStateChange?: (state: UploadState) => void;
 };
 
 function toPublicUrlMaybe(pathOrUrl: string) {
@@ -39,26 +49,87 @@ export default function AdminImageUploader({
   inputRef,
   autoUpload = true,
   hideUI = false,
+  accept = "image/*",
+  onUploadStateChange,
 }: Props) {
   const internalRef = useRef<HTMLInputElement | null>(null);
   const ref = inputRef ?? internalRef;
 
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string>("");
+  const [progress, setProgress] = useState(0);
+
+  const setUploadState = (next: UploadState) => {
+    setBusy(next.busy);
+    setProgress(next.progress);
+    setMsg(next.message);
+    onUploadStateChange?.(next);
+  };
 
   async function upload() {
     const file = ref.current?.files?.[0];
     if (!file) return;
 
-    setBusy(true);
-    setMsg("");
+    setUploadState({ busy: true, progress: 0, message: "Uploading..." });
 
     try {
       const fd = new FormData();
       fd.append("file", file);
 
-      const res = await fetch("/admin/upload", { method: "POST", body: fd });
-      const json = await res.json();
+      const json = await new Promise<{
+        ok?: boolean;
+        error?: string;
+        publicUrl?: string;
+        public_url?: string;
+        url?: string;
+        path?: string;
+      }>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", "/admin/upload");
+
+        xhr.upload.onloadstart = () => {
+          setUploadState({ busy: true, progress: 0, message: "Uploading..." });
+        };
+
+        xhr.upload.onprogress = (event) => {
+          if (!event.lengthComputable) return;
+          const pct = Math.max(0, Math.min(100, Math.round((event.loaded / event.total) * 100)));
+          setUploadState({ busy: true, progress: pct, message: "Uploading..." });
+        };
+
+        xhr.upload.onload = () => {
+          setUploadState({ busy: true, progress: 100, message: "Processing..." });
+        };
+
+        xhr.onerror = () => reject(new Error("Upload failed"));
+        xhr.onabort = () => reject(new Error("Upload canceled"));
+        xhr.onload = () => {
+          let parsed: {
+            ok?: boolean;
+            error?: string;
+            publicUrl?: string;
+            public_url?: string;
+            url?: string;
+            path?: string;
+          } = {};
+
+          try {
+            parsed = JSON.parse(xhr.responseText || "{}") as typeof parsed;
+          } catch {
+            reject(new Error("Invalid upload response"));
+            return;
+          }
+
+          if (xhr.status < 200 || xhr.status >= 300) {
+            reject(new Error(parsed.error || "Upload failed"));
+            return;
+          }
+
+          resolve(parsed);
+        };
+
+        xhr.send(fd);
+      });
 
       if (!json?.ok) throw new Error(json?.error || "Upload failed");
 
@@ -69,12 +140,10 @@ export default function AdminImageUploader({
       onUploaded(finalUrl);
 
       if (ref.current) ref.current.value = "";
-      setMsg("Uploaded");
-    } catch (e: any) {
-      setMsg(e?.message || "Upload failed");
-    } finally {
-      setBusy(false);
-      setTimeout(() => setMsg(""), 1200);
+      setUploadState({ busy: false, progress: 100, message: "Uploaded" });
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : "Upload failed";
+      setUploadState({ busy: false, progress: 0, message });
     }
   }
 
@@ -91,7 +160,7 @@ export default function AdminImageUploader({
         <input
           ref={ref}
           type="file"
-          accept="image/*"
+          accept={accept}
           onChange={onPickFile}
         />
         {msg ? <p className="mt-2 text-xs text-zinc-600">{msg}</p> : null}
@@ -107,7 +176,7 @@ export default function AdminImageUploader({
         <input
           ref={ref}
           type="file"
-          accept="image/*"
+          accept={accept}
           onChange={onPickFile}
           className="w-full rounded-xl border bg-white px-3 py-2 text-sm"
         />
@@ -121,6 +190,20 @@ export default function AdminImageUploader({
           {busy ? "Uploading..." : "Upload"}
         </button>
       </div>
+
+      {busy ? (
+        <div className="mt-3 space-y-1">
+          <div className="h-2 overflow-hidden rounded-full bg-zinc-200">
+            <div
+              className="h-full bg-emerald-600 transition-[width] duration-150"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+          <p className="text-xs font-semibold text-emerald-700">
+            {msg.toLowerCase().includes("processing") ? "Processing..." : `Uploading... ${progress}%`}
+          </p>
+        </div>
+      ) : null}
 
       {msg ? <p className="mt-2 text-xs text-zinc-600">{msg}</p> : null}
     </div>

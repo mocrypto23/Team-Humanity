@@ -80,6 +80,12 @@ function parseInstagram(
   }
 }
 
+function resolveUploadedVideoUrl(url?: string | null) {
+  const raw = String(url || "").trim();
+  if (!raw) return null;
+  return publicStorageUrl("influencers", raw);
+}
+
 function useIsTouchDevice() {
   const [isTouch, setIsTouch] = useState(false);
   useEffect(() => {
@@ -91,7 +97,7 @@ function useIsTouchDevice() {
 }
 
 /**
- * ✅ 3D Tilt Hook
+ * âœ… 3D Tilt Hook
  * - RAF throttling
  * - disables on touch + respects prefers-reduced-motion
  */
@@ -158,16 +164,20 @@ function VideoModal({
   onClose,
   title,
   iframeSrc,
+  videoSrc,
   openExternalHref,
   openExternalLabel,
+  showExternal = true,
   variant = "video",
 }: {
   open: boolean;
   onClose: () => void;
   title: string;
   iframeSrc: string | null;
+  videoSrc?: string | null;
   openExternalHref: string;
   openExternalLabel: string;
+  showExternal?: boolean;
   variant?: "video" | "reel";
 }) {
   const [mountFrame, setMountFrame] = useState(false);
@@ -201,7 +211,27 @@ function VideoModal({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
-  const isReel = variant === "reel";
+  const isPortraitVideo = variant === "reel" || !!videoSrc;
+
+  useEffect(() => {
+    if (!open || !videoSrc) return;
+    const orientation = (screen as Screen & { orientation?: { lock?: (v: string) => Promise<void>; unlock?: () => void } }).orientation;
+    if (!orientation?.lock) return;
+
+    let locked = false;
+    orientation
+      .lock("portrait")
+      .then(() => {
+        locked = true;
+      })
+      .catch(() => {
+        /* ignore: not supported on all browsers/devices */
+      });
+
+    return () => {
+      if (locked && orientation.unlock) orientation.unlock();
+    };
+  }, [open, videoSrc]);
 
   return (
     <AnimatePresence>
@@ -235,15 +265,15 @@ function VideoModal({
                 aria-label="Close"
                 type="button"
               >
-                ✕
+                X
               </button>
             </div>
 
             <div className="flex-1 px-4 pb-4">
-              <div
+                  <div
                 className={[
                   "relative mx-auto overflow-hidden rounded-3xl border border-white/10 bg-white shadow-2xl",
-                  isReel ? "h-[calc(100vh-180px)] max-w-[560px] aspect-[9/16]" : "w-full max-w-[980px] aspect-video",
+                  isPortraitVideo ? "h-[calc(100vh-180px)] max-w-[560px] aspect-[9/16]" : "w-full max-w-[980px] aspect-video",
                 ].join(" ")}
               >
                 {!frameLoaded ? (
@@ -262,22 +292,33 @@ function VideoModal({
                     referrerPolicy="strict-origin-when-cross-origin"
                     onLoad={() => setFrameLoaded(true)}
                   />
+                ) : mountFrame && videoSrc ? (
+                  <video
+                    className="absolute inset-0 h-full w-full bg-black"
+                    src={videoSrc}
+                    controls
+                    autoPlay
+                    playsInline
+                    onLoadedData={() => setFrameLoaded(true)}
+                  />
                 ) : (
                   <div className="absolute inset-0 grid place-items-center bg-white text-sm text-zinc-500">
-                    Loading…
+                    Loading...
                   </div>
                 )}
               </div>
 
-              <div className="mt-4 grid gap-2 sm:grid-cols-2">
-                <a
-                  href={openExternalHref}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="rounded-2xl border border-white/15 bg-white/10 px-4 py-3 text-center text-sm font-semibold text-white hover:bg-white/15"
-                >
-                  {openExternalLabel}
-                </a>
+              <div className={`mt-4 grid gap-2 ${showExternal ? "sm:grid-cols-2" : ""}`}>
+                {showExternal ? (
+                  <a
+                    href={openExternalHref}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="rounded-2xl border border-white/15 bg-white/10 px-4 py-3 text-center text-sm font-semibold text-white hover:bg-white/15"
+                  >
+                    {openExternalLabel}
+                  </a>
+                ) : null}
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -368,7 +409,7 @@ function ImageModal({
   type="button"
   aria-label="Close"
 >
-  ✕
+  âœ•
 </button>
 
 
@@ -422,12 +463,13 @@ export default function InfluencerCard({
   const [activeImg, setActiveImg] = useState(0);
   const [igOpen, setIgOpen] = useState(false);
   const [ytOpen, setYtOpen] = useState(false);
+  const [uploadedOpen, setUploadedOpen] = useState(false);
   const [imgOpen, setImgOpen] = useState(false);
 
   const isTouch = useIsTouchDevice();
   const reduceMotion = useReducedMotion();
 
-  // ✅ tilt disabled on touch & reduced motion
+  // âœ… tilt disabled on touch & reduced motion
   const tiltDisabled = isTouch || !!reduceMotion;
   const tilt = useTilt3D(tiltDisabled);
 const wrapperProps = tiltDisabled
@@ -446,8 +488,10 @@ const wrapperProps = tiltDisabled
   const images = useMemo(() => (influencer.image_paths ?? []).filter(Boolean), [influencer.image_paths]);
   const activeUrl = images[activeImg] ? publicStorageUrl("influencers", images[activeImg]!) : null;
 
-  const ytId = extractYouTubeId(influencer.video_url);
-  const ig = parseInstagram(influencer.video_url);
+  const rawVideo = String(influencer.video_url || "").trim();
+  const ytId = extractYouTubeId(rawVideo);
+  const ig = parseInstagram(rawVideo);
+  const uploadedVideoUrl = !ytId && !ig && rawVideo ? resolveUploadedVideoUrl(rawVideo) : null;
 
   const confirmedText = influencer.confirmed_label || "Confirmed by Team Humanity";
 
@@ -481,7 +525,7 @@ const donationButtons = useMemo(() => {
     ? list
         .map((x) => {
           const url = String(x?.url || "").trim();
-          const rawLabel = String(x?.label || x?.platform || x?.name || "").trim(); // ✅ fallback keys
+          const rawLabel = String(x?.label || x?.platform || x?.name || "").trim(); // âœ… fallback keys
           return {
             label: rawLabel || (url ? inferDonateLabel(url) : "Donate"),
             url,
@@ -498,7 +542,7 @@ const donationButtons = useMemo(() => {
 
   const igEmbedUrl = ig?.embed ?? null;
   const ytEmbedUrl = ytId ? `https://www.youtube.com/embed/${ytId}` : null;
-  const ytWatchUrl = ytId ? `https://www.youtube.com/watch?v=${ytId}` : influencer.video_url || "";
+  const ytWatchUrl = ytId ? `https://www.youtube.com/watch?v=${ytId}` : "";
 
   const isHighlight = influencer.highlight_slot === 1 || influencer.highlight_slot === 2;
 
@@ -506,7 +550,7 @@ const donationButtons = useMemo(() => {
 
   return (
     <>
-      {/* ✅ Wrapper responsible for 3D tilt */}
+      {/* âœ… Wrapper responsible for 3D tilt */}
           <div
   ref={(node) => {
     tilt.ref.current = node as unknown as HTMLElement | null;
@@ -571,7 +615,7 @@ const donationButtons = useMemo(() => {
               </div>
             ) : null}
 
-            {/* ✅ Buttons */}
+            {/* âœ… Buttons */}
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <Link
                 href={`/stories/${encodeURIComponent(storySlug)}`}
@@ -711,7 +755,7 @@ transition={isTouch ? { duration: 0.12 } : { duration: 0.18 }}
                         className="rounded-2xl bg-emerald-600 px-4 py-3 text-center text-sm font-semibold text-white hover:bg-emerald-700"
                         type="button"
                       >
-                        Watch Video here
+                        Watch Video
                       </button>
 
                       <a
@@ -730,7 +774,7 @@ transition={isTouch ? { duration: 0.12 } : { duration: 0.18 }}
                         className="rounded-2xl bg-emerald-600 px-4 py-3 text-center text-sm font-semibold text-white hover:bg-emerald-700"
                         type="button"
                       >
-                        Watch Video here
+                        Watch Video
                       </button>
 
                       <a
@@ -739,12 +783,22 @@ transition={isTouch ? { duration: 0.12 } : { duration: 0.18 }}
                         rel="noreferrer"
                         className="rounded-2xl border border-emerald-200 bg-white px-4 py-3 text-center text-sm font-semibold text-emerald-800 hover:bg-emerald-50"
                       >
-                        Open on Instagram
+                        Instagram profile
                       </a>
+                    </div>
+                  ) : uploadedVideoUrl ? (
+                    <div className="grid gap-2">
+                      <button
+                        onClick={() => setUploadedOpen(true)}
+                        className="rounded-2xl bg-emerald-600 px-4 py-3 text-center text-sm font-semibold text-white hover:bg-emerald-700"
+                        type="button"
+                      >
+                        Watch Video
+                      </button>
                     </div>
                   ) : (
                     <p className="text-sm text-zinc-600">
-                      <span className="font-mono text-zinc-800">video_url</span>.
+                      No video yet.
                     </p>
                   )}
                 </div>
@@ -815,7 +869,7 @@ transition={isTouch ? { duration: 0.12 } : { duration: 0.18 }}
         title="Watch Reel"
         iframeSrc={igEmbedUrl}
         openExternalHref={ig?.canonical || influencer.video_url || "#"}
-        openExternalLabel="Open on Instagram"
+        openExternalLabel="Instagram profile"
         variant="reel"
       />
 
@@ -828,6 +882,19 @@ transition={isTouch ? { duration: 0.12 } : { duration: 0.18 }}
         openExternalLabel="Open in YouTube"
         variant="video"
       />
+
+      <VideoModal
+        open={uploadedOpen}
+        onClose={() => setUploadedOpen(false)}
+        title="Watch Video"
+        iframeSrc={null}
+        videoSrc={uploadedVideoUrl}
+        openExternalHref={uploadedVideoUrl || "#"}
+        openExternalLabel="Open video file"
+        showExternal={false}
+        variant="video"
+      />
     </>
   );
 }
+

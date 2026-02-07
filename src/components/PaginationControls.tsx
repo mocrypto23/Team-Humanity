@@ -26,7 +26,6 @@ export default function PaginationControls({
     const yy = Number(y);
     if (!Number.isFinite(yy)) return;
 
-    // فوري
     window.scrollTo(0, yy);
   }, [page]);
 
