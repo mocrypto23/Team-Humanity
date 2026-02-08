@@ -349,11 +349,11 @@ function ImageModal({
                 e.stopPropagation();
                 onClose();
               }}
-              className="absolute top-4 right-4 z-50 rounded-full bg-red-600 px-4 py-3 text-lg font-extrabold text-white shadow-2xl hover:bg-red-700"
+              className="absolute top-4 right-4 z-50 rounded-full bg-red-600 px-4 py-3 text-2xl leading-none font-black text-white shadow-2xl hover:bg-red-700"
               type="button"
               aria-label="Close"
             >
-              ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¢
+              &times;
             </button>
 
             <Image
