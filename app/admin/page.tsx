@@ -124,9 +124,9 @@ function LoginView({ err }: { err: string }) {
 export default async function AdminPage({
   searchParams,
 }: {
-  searchParams?: Record<string, string | string[] | undefined>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const sp = await Promise.resolve(searchParams);
+  const sp = await searchParams;
   const errParam = sp?.err;
 
   const err =

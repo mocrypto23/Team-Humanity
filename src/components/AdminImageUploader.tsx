@@ -126,10 +126,12 @@ export default function AdminImageUploader({
       if (!signRes.ok || !signJson.ok || !signJson.signedUrl || !signJson.path) {
         throw new Error(signJson.error || `Failed to prepare upload (status ${signRes.status})`);
       }
+      const signedUrl = signJson.signedUrl;
+      const signedPath = signJson.path;
 
       await new Promise<void>((resolve, reject) => {
         const xhr = new XMLHttpRequest();
-        xhr.open("PUT", signJson.signedUrl);
+        xhr.open("PUT", signedUrl);
         xhr.setRequestHeader("Accept", "application/json");
 
         xhr.upload.onloadstart = () => {
@@ -195,7 +197,7 @@ export default function AdminImageUploader({
         xhr.send(payload);
       });
 
-      const raw = String(signJson.path || "");
+      const raw = String(signedPath || "");
       if (!raw) throw new Error("Upload ok but missing path/url");
 
       const finalUrl = toPublicUrlMaybe(raw);
