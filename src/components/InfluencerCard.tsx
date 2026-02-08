@@ -86,6 +86,54 @@ function resolveUploadedVideoUrl(url?: string | null) {
   return publicStorageUrl("influencers", raw);
 }
 
+const INSTAGRAM_PROFILE_LABEL = "__instagram_profile__";
+
+function normalizeExternalUrl(raw: string) {
+  const v = String(raw || "").trim();
+  if (!v) return "";
+  if (/^https?:\/\//i.test(v)) return v;
+  return `https://${v}`;
+}
+
+function isInstagramProfileUrl(raw: string) {
+  try {
+    const u = new URL(normalizeExternalUrl(raw));
+    const host = u.hostname.toLowerCase();
+    if (!host.includes("instagram.com") && !host.includes("instagr.am")) return false;
+
+    const first = u.pathname.split("/").filter(Boolean)[0]?.toLowerCase() || "";
+    if (!first) return false;
+    return !["p", "reel", "reels", "tv"].includes(first);
+  } catch {
+    return false;
+  }
+}
+
+function isInstagramProfileEntry(label: string, url: string) {
+  const l = String(label || "").trim().toLowerCase();
+  if (l === INSTAGRAM_PROFILE_LABEL) return true;
+  return isInstagramProfileUrl(url);
+}
+
+function getInstagramProfileUrl(influencer: InfluencerRow) {
+  const links = (influencer.donation_links ?? []).filter(Boolean) as Array<{ label?: unknown; url?: unknown }>;
+
+  const direct = links.find(
+    (x) => String(x.label || "").trim().toLowerCase() === INSTAGRAM_PROFILE_LABEL
+  );
+  if (direct?.url) return normalizeExternalUrl(String(direct.url || ""));
+
+  const fallback = links.find((x) =>
+    isInstagramProfileEntry(String(x.label || ""), String(x.url || ""))
+  );
+  if (fallback?.url) return normalizeExternalUrl(String(fallback.url || ""));
+
+  const legacy = String(influencer.donation_link || "").trim();
+  if (isInstagramProfileUrl(legacy)) return normalizeExternalUrl(legacy);
+
+  return "";
+}
+
 function useIsTouchDevice() {
   const [isTouch, setIsTouch] = useState(false);
   useEffect(() => {
@@ -97,7 +145,7 @@ function useIsTouchDevice() {
 }
 
 /**
- * âœ… 3D Tilt Hook
+ * Ã¢Å“â€¦ 3D Tilt Hook
  * - RAF throttling
  * - disables on touch + respects prefers-reduced-motion
  */
@@ -294,11 +342,16 @@ function VideoModal({
                   />
                 ) : mountFrame && videoSrc ? (
                   <video
-                    className="absolute inset-0 h-full w-full bg-black"
+                    className={[
+                      "absolute inset-0 h-full w-full bg-black",
+                      isPortraitVideo ? "object-cover" : "object-contain",
+                    ].join(" ")}
                     src={videoSrc}
                     controls
                     autoPlay
                     playsInline
+                    controlsList={isPortraitVideo ? "nofullscreen noremoteplayback" : undefined}
+                    disablePictureInPicture={isPortraitVideo}
                     onLoadedData={() => setFrameLoaded(true)}
                   />
                 ) : (
@@ -409,7 +462,7 @@ function ImageModal({
   type="button"
   aria-label="Close"
 >
-  âœ•
+  Ã¢Å“â€¢
 </button>
 
 
@@ -469,7 +522,7 @@ export default function InfluencerCard({
   const isTouch = useIsTouchDevice();
   const reduceMotion = useReducedMotion();
 
-  // âœ… tilt disabled on touch & reduced motion
+  // Ã¢Å“â€¦ tilt disabled on touch & reduced motion
   const tiltDisabled = isTouch || !!reduceMotion;
   const tilt = useTilt3D(tiltDisabled);
 const wrapperProps = tiltDisabled
@@ -492,6 +545,7 @@ const wrapperProps = tiltDisabled
   const ytId = extractYouTubeId(rawVideo);
   const ig = parseInstagram(rawVideo);
   const uploadedVideoUrl = !ytId && !ig && rawVideo ? resolveUploadedVideoUrl(rawVideo) : null;
+  const instagramProfileUrl = getInstagramProfileUrl(influencer);
 
   const confirmedText = influencer.confirmed_label || "Confirmed by Team Humanity";
 
@@ -525,19 +579,22 @@ const donationButtons = useMemo(() => {
     ? list
         .map((x) => {
           const url = String(x?.url || "").trim();
-          const rawLabel = String(x?.label || x?.platform || x?.name || "").trim(); // âœ… fallback keys
+          const rawLabel = String(x?.label || x?.platform || x?.name || "").trim();
+          if (!url) return null;
+          if (isInstagramProfileEntry(rawLabel, url)) return null;
+
           return {
             label: rawLabel || (url ? inferDonateLabel(url) : "Donate"),
             url,
           };
         })
-        .filter((x) => x.url)
+        .filter((x) => !!x?.url)
     : [];
 
-  if (!cleaned.length && influencer.donation_link) {
+  if (!cleaned.length && influencer.donation_link && !isInstagramProfileUrl(influencer.donation_link)) {
     return [{ label: inferDonateLabel(influencer.donation_link), url: influencer.donation_link }];
   }
-  return cleaned;
+  return cleaned as { label: string; url: string }[];
 }, [influencer.donation_links, influencer.donation_link]);
 
   const igEmbedUrl = ig?.embed ?? null;
@@ -550,7 +607,7 @@ const donationButtons = useMemo(() => {
 
   return (
     <>
-      {/* âœ… Wrapper responsible for 3D tilt */}
+      {/* Wrapper responsible for 3D tilt */}
           <div
   ref={(node) => {
     tilt.ref.current = node as unknown as HTMLElement | null;
@@ -615,7 +672,7 @@ const donationButtons = useMemo(() => {
               </div>
             ) : null}
 
-            {/* âœ… Buttons */}
+            {/* Buttons */}
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <Link
                 href={`/stories/${encodeURIComponent(storySlug)}`}
@@ -664,6 +721,18 @@ const donationButtons = useMemo(() => {
             >
               {influencer.bio}
             </p>
+          ) : null}
+
+          {instagramProfileUrl ? (
+            <a
+              href={instagramProfileUrl}
+              target="_blank"
+              rel="noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="mt-2 inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800 hover:bg-emerald-100"
+            >
+              Instagram profile
+            </a>
           ) : null}
 
           <div
@@ -813,8 +882,8 @@ transition={isTouch ? { duration: 0.12 } : { duration: 0.18 }}
                         rel="noreferrer"
                         className={
                           idx === 0
-                            ? "block rounded-2xl bg-emerald-600 px-4 py-3 text-center text-sm font-semibold text-white hover:bg-emerald-700"
-                            : "block rounded-2xl border border-emerald-200 bg-white px-4 py-3 text-center text-sm font-semibold text-emerald-800 hover:bg-emerald-50"
+                            ? "block break-words rounded-2xl bg-emerald-600 px-4 py-3 text-center text-sm font-semibold text-white hover:bg-emerald-700"
+                            : "block break-words rounded-2xl border border-emerald-200 bg-white px-4 py-3 text-center text-sm font-semibold text-emerald-800 hover:bg-emerald-50"
                         }
                       >
                         {b.label || "Donate"}
@@ -892,9 +961,10 @@ transition={isTouch ? { duration: 0.12 } : { duration: 0.18 }}
         openExternalHref={uploadedVideoUrl || "#"}
         openExternalLabel="Open video file"
         showExternal={false}
-        variant="video"
+        variant="reel"
       />
     </>
   );
 }
+
 

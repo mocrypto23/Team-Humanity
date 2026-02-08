@@ -8,6 +8,18 @@ import { adminSignIn } from "@/app/admin/actions";
 export const dynamic = "force-dynamic";
 
 const PAGE_SIZE = 50;
+const DEFAULT_SITE_COPY = {
+  headlineLine1: "Help directly.",
+  headlineLine2: "Transparently.",
+  subheading:
+    "Team Humanity is a curated space that highlights personal stories and trusted links to offer direct support - simple, respectful, and transparent.",
+};
+
+type SiteCopy = typeof DEFAULT_SITE_COPY;
+type SiteCopyRow = {
+  key: string | null;
+  value: string | null;
+};
 
 function parseAdminEmails() {
   const raw = process.env.ADMIN_EMAILS || "";
@@ -31,6 +43,36 @@ async function getInfluencers(): Promise<InfluencerRow[]> {
   return (data ?? []) as InfluencerRow[];
 }
 
+async function getSiteCopy(): Promise<SiteCopy> {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from("site_copy")
+      .select("key,value")
+      .in("key", ["home_headline_line1", "home_headline_line2", "home_subheading"]);
+
+    if (error) {
+      console.error("Supabase error (site_copy):", error);
+      return DEFAULT_SITE_COPY;
+    }
+
+    const map = new Map<string, string>();
+    (data ?? []).forEach((row: SiteCopyRow) => {
+      const key = String(row?.key || "").trim();
+      const value = String(row?.value || "").trim();
+      if (key) map.set(key, value);
+    });
+
+    return {
+      headlineLine1: map.get("home_headline_line1") || DEFAULT_SITE_COPY.headlineLine1,
+      headlineLine2: map.get("home_headline_line2") || DEFAULT_SITE_COPY.headlineLine2,
+      subheading: map.get("home_subheading") || DEFAULT_SITE_COPY.subheading,
+    };
+  } catch (e) {
+    console.error("Supabase error (site_copy):", e);
+    return DEFAULT_SITE_COPY;
+  }
+}
+
 function LoginView({ err }: { err: string }) {
   return (
     <main className="min-h-screen bg-gradient-to-b from-emerald-50 via-white to-white px-4 py-10">
@@ -40,7 +82,7 @@ function LoginView({ err }: { err: string }) {
 
         {err ? (
           <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">
-            ❌ {err}
+            Error: {err}
           </div>
         ) : null}
 
@@ -63,7 +105,7 @@ function LoginView({ err }: { err: string }) {
               type="password"
               required
               className="w-full rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-emerald-500"
-              placeholder="••••••••"
+              placeholder="********"
             />
           </div>
 
@@ -82,7 +124,7 @@ function LoginView({ err }: { err: string }) {
 export default async function AdminPage({
   searchParams,
 }: {
-  searchParams?: any;
+  searchParams?: Record<string, string | string[] | undefined>;
 }) {
   const sp = await Promise.resolve(searchParams);
   const errParam = sp?.err;
@@ -113,7 +155,8 @@ if (!admins.includes(email)) {
 }
 
 
-  const influencers = await getInfluencers();
-  return <AdminInfluencersClient influencers={influencers} />;
+  const [influencers, siteCopy] = await Promise.all([getInfluencers(), getSiteCopy()]);
+  return <AdminInfluencersClient influencers={influencers} siteCopy={siteCopy} />;
 }
+
 

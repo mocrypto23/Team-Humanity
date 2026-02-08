@@ -10,7 +10,15 @@ function scrollToId(id: string, behavior: ScrollBehavior) {
   el.scrollIntoView({ behavior, block: "start" });
 }
 
-export default function HomeHero() {
+export default function HomeHero({
+  headlineLine1 = "Help directly.",
+  headlineLine2 = "Transparently.",
+  subheading = "Team Humanity is a curated space that highlights personal stories and trusted links to offer direct support - simple, respectful, and transparent.",
+}: {
+  headlineLine1?: string;
+  headlineLine2?: string;
+  subheading?: string;
+}) {
   const reduceMotion = useReducedMotion();
   const floatY = reduceMotion ? 0 : [0, -7, 0];
   const pathname = usePathname();
@@ -47,7 +55,7 @@ export default function HomeHero() {
               className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-white/80 px-3 py-1 text-xs font-semibold text-emerald-800"
             >
               <span className="h-2 w-2 rounded-full bg-emerald-500" />
-              Transparent • Direct • Human
+              Transparent - Direct - Human
             </motion.div>
 
             <motion.h1
@@ -60,9 +68,9 @@ export default function HomeHero() {
               className="mt-4 text-3xl font-semibold tracking-tight text-zinc-900 md:text-5xl"
               style={{ willChange: "transform" }}
             >
-              Help directly.
+              {headlineLine1}
               <br />
-              Transparently.
+              {headlineLine2}
             </motion.h1>
 
             <motion.p
@@ -75,8 +83,7 @@ export default function HomeHero() {
               className="mt-4 max-w-xl text-sm leading-relaxed text-zinc-600 md:text-base"
               style={{ willChange: "transform" }}
             >
-              Team Humanity is a curated space that highlights personal stories and trusted links to offer direct support —
-              simple, respectful, and transparent.
+              {subheading}
             </motion.p>
 
             <motion.div
@@ -123,7 +130,6 @@ export default function HomeHero() {
 
               <div className="absolute inset-x-4 bottom-4">
                 <div className="pointer-events-none absolute -inset-x-4 -bottom-4 h-36 bg-gradient-to-t from-black/30 via-black/10 to-transparent" />
-
                 <div className="relative rounded-2xl border border-white/20 bg-white/50 p-4 shadow-lg shadow-black/10 backdrop-blur-md">
                   <p className="text-xs font-semibold text-emerald-900">
                     Tip: Verified badges highlight confirmed profiles when available.
@@ -140,3 +146,4 @@ export default function HomeHero() {
     </section>
   );
 }
+

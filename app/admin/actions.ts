@@ -217,6 +217,36 @@ export async function moveInfluencerSort(formData: FormData) {
   redirect(returnTo);
 }
 
+export async function upsertSiteCopy(formData: FormData) {
+  await requireAdminEmail();
+
+  const returnTo = String(formData.get("return_to") || "").trim() || "/admin";
+  const headlineLine1 = String(formData.get("headline_line1") || "").trim();
+  const headlineLine2 = String(formData.get("headline_line2") || "").trim();
+  const subheading = String(formData.get("subheading") || "").trim();
+
+  if (!headlineLine1 || !headlineLine2 || !subheading) {
+    redirect(`${returnTo}${returnTo.includes("?") ? "&" : "?"}err=site_copy_required`);
+  }
+
+  const rows = [
+    { key: "home_headline_line1", value: headlineLine1 },
+    { key: "home_headline_line2", value: headlineLine2 },
+    { key: "home_subheading", value: subheading },
+  ];
+
+  const { error } = await supabaseAdmin.from("site_copy").upsert(rows, { onConflict: "key" });
+  if (error) {
+    redirect(
+      `${returnTo}${returnTo.includes("?") ? "&" : "?"}err=${encodeURIComponent(error.message)}`
+    );
+  }
+
+  revalidatePath("/");
+  revalidatePath("/admin");
+  redirect(`${returnTo}${returnTo.includes("?") ? "&" : "?"}ok=saved`);
+}
+
 
 export async function setInfluencerPin(formData: FormData) {
   await requireAdminEmail();

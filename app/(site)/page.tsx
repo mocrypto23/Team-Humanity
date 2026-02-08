@@ -9,6 +9,17 @@ import PaginationControls from "@/components/PaginationControls";
 export const revalidate = false;
 
 const PAGE_SIZE = 9;
+const DEFAULT_SITE_COPY = {
+  headlineLine1: "Help directly.",
+  headlineLine2: "Transparently.",
+  subheading:
+    "Team Humanity is a curated space that highlights personal stories and trusted links to offer direct support - simple, respectful, and transparent.",
+};
+
+type SiteCopyRow = {
+  key: string | null;
+  value: string | null;
+};
 
 function clampPage(n: number) {
   if (!Number.isFinite(n) || n <= 0) return 1;
@@ -41,6 +52,35 @@ async function getHighlights(): Promise<InfluencerRow[]> {
   return (data ?? []) as InfluencerRow[];
 }
 
+async function getSiteCopy() {
+  try {
+    const { data, error } = await supabaseServer
+      .from("site_copy")
+      .select("key,value")
+      .in("key", ["home_headline_line1", "home_headline_line2", "home_subheading"]);
+
+    if (error) {
+      console.error("Supabase error (site_copy):", error);
+      return DEFAULT_SITE_COPY;
+    }
+
+    const map = new Map<string, string>();
+    (data ?? []).forEach((row: SiteCopyRow) => {
+      const key = String(row?.key || "").trim();
+      const value = String(row?.value || "").trim();
+      if (key) map.set(key, value);
+    });
+
+    return {
+      headlineLine1: map.get("home_headline_line1") || DEFAULT_SITE_COPY.headlineLine1,
+      headlineLine2: map.get("home_headline_line2") || DEFAULT_SITE_COPY.headlineLine2,
+      subheading: map.get("home_subheading") || DEFAULT_SITE_COPY.subheading,
+    };
+  } catch (e) {
+    console.error("Supabase error (site_copy):", e);
+    return DEFAULT_SITE_COPY;
+  }
+}
 async function getRestPaged(page: number): Promise<{
   rows: InfluencerRow[];
   total: number;
@@ -116,7 +156,11 @@ export default async function HomePage({
   const sp = await searchParams;
   const page = clampPage(Number(sp?.page || "1"));
 
-  const [highlights, restRes] = await Promise.all([getHighlights(), getRestPaged(page)]);
+  const [highlights, restRes, siteCopy] = await Promise.all([
+    getHighlights(),
+    getRestPaged(page),
+    getSiteCopy(),
+  ]);
 
   const rest = restRes.rows;
   const totalRest = restRes.total;
@@ -130,7 +174,11 @@ export default async function HomePage({
           <HashScroll />
 
       <div className="bg-gradient-to-b from-emerald-50 via-emerald-50/40 to-white">
-        <HomeHero />
+        <HomeHero
+          headlineLine1={siteCopy.headlineLine1}
+          headlineLine2={siteCopy.headlineLine2}
+          subheading={siteCopy.subheading}
+        />
 
         <div className="pb-10">
           <div className="mx-auto max-w-6xl px-4">

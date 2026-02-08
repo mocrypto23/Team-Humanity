@@ -4,13 +4,13 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { UserPlus, MessageSquare, Star, Menu, X, LogOut } from "lucide-react";
+import { UserPlus, MessageSquare, Star, Menu, X, LogOut, type LucideIcon } from "lucide-react";
 import { adminSignOut } from "@/app/admin/actions";
 
 type NavItem = {
   href: string;
   label: string;
-  Icon: any;
+  Icon: LucideIcon;
   badge?: string;
 };
 
@@ -57,20 +57,20 @@ export default function AdminShell({
   );
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-emerald-50 via-white to-white text-zinc-900 font-sans flex flex-col">
+    <div className="min-h-screen overflow-x-hidden bg-gradient-to-b from-emerald-50 via-white to-white text-zinc-900 font-sans flex flex-col">
       <div className="pointer-events-none fixed inset-0 -z-10">
         <div className="absolute -top-28 left-1/2 h-80 w-80 -translate-x-1/2 rounded-full bg-emerald-200/30 blur-2xl" />
         <div className="absolute top-40 right-0 h-72 w-72 rounded-full bg-emerald-100/60 blur-2xl" />
         <div className="absolute bottom-0 left-0 h-72 w-72 rounded-full bg-emerald-100/55 blur-2xl" />
       </div>
 
-      <header className="px-6 lg:px-10 h-20 flex items-center justify-between sticky top-0 z-30 bg-white/90 backdrop-blur-md border-b border-emerald-100 shadow-sm">
-        <div className="flex items-center gap-6">
+      <header className="px-3 sm:px-6 lg:px-10 h-16 sm:h-20 flex items-center justify-between sticky top-0 z-30 bg-white/90 backdrop-blur-md border-b border-emerald-100 shadow-sm">
+        <div className="flex items-center gap-3 sm:gap-6 min-w-0">
           <div className="flex items-center gap-2">
-            <div className="w-10 h-10 bg-emerald-600 rounded-xl flex items-center justify-center text-white font-bold text-xl shadow-lg shadow-emerald-200">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 bg-emerald-600 rounded-xl flex items-center justify-center text-white font-bold text-lg sm:text-xl shadow-lg shadow-emerald-200">
               TH
             </div>
-            <span className="font-bold text-xl text-emerald-900 hidden md:block">
+            <span className="font-bold text-lg sm:text-xl text-emerald-900 hidden md:block">
               Team Humanity
             </span>
           </div>
@@ -107,7 +107,7 @@ export default function AdminShell({
           </nav>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 sm:gap-4">
           <button
             onClick={() => setIsMobileOpen(true)}
             className="lg:hidden p-2 rounded-xl text-zinc-600 hover:bg-emerald-50"
@@ -139,8 +139,8 @@ export default function AdminShell({
       </header>
 
       {isMobileOpen ? (
-        <div className="fixed inset-0 z-50 bg-white/95 backdrop-blur-lg flex flex-col p-6 lg:hidden">
-          <div className="flex justify-between items-center mb-8">
+        <div className="fixed inset-0 z-50 bg-white/95 backdrop-blur-lg flex flex-col p-4 sm:p-6 lg:hidden">
+          <div className="flex justify-between items-center mb-6 sm:mb-8">
             <h1 className="text-2xl font-bold text-emerald-800">Menu</h1>
             <button
               onClick={() => setIsMobileOpen(false)}
@@ -162,7 +162,7 @@ export default function AdminShell({
                   key={item.href + idx}
                   href={item.href}
                   className={[
-                    "flex items-center justify-between gap-4 px-6 py-4 rounded-2xl transition-all text-lg font-medium",
+                    "flex items-center justify-between gap-3 px-4 sm:px-6 py-3.5 sm:py-4 rounded-2xl transition-all text-base sm:text-lg font-medium",
                     active
                       ? "bg-emerald-600 text-white shadow-lg"
                       : "text-zinc-600 bg-zinc-50 border border-zinc-100",
@@ -193,7 +193,9 @@ export default function AdminShell({
         </div>
       ) : null}
 
-      <main className="flex-1 p-6 lg:p-8 max-w-7xl w-full mx-auto">{children}</main>
+      <main className="flex-1 min-w-0 w-full max-w-7xl mx-auto overflow-x-hidden p-3 sm:p-6 lg:p-8">
+        {children}
+      </main>
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
+import { ChevronLeft } from "lucide-react";
 import type { InfluencerRow } from "@/lib/types";
 import { publicStorageUrl } from "@/lib/storage";
 import { createPortal } from "react-dom";
@@ -74,6 +75,54 @@ function resolveUploadedVideoUrl(url?: string | null) {
   const raw = String(url || "").trim();
   if (!raw) return null;
   return publicStorageUrl("influencers", raw);
+}
+
+const INSTAGRAM_PROFILE_LABEL = "__instagram_profile__";
+
+function normalizeExternalUrl(raw: string) {
+  const v = String(raw || "").trim();
+  if (!v) return "";
+  if (/^https?:\/\//i.test(v)) return v;
+  return `https://${v}`;
+}
+
+function isInstagramProfileUrl(raw: string) {
+  try {
+    const u = new URL(normalizeExternalUrl(raw));
+    const host = u.hostname.toLowerCase();
+    if (!host.includes("instagram.com") && !host.includes("instagr.am")) return false;
+
+    const first = u.pathname.split("/").filter(Boolean)[0]?.toLowerCase() || "";
+    if (!first) return false;
+    return !["p", "reel", "reels", "tv"].includes(first);
+  } catch {
+    return false;
+  }
+}
+
+function isInstagramProfileEntry(label: string, url: string) {
+  const l = String(label || "").trim().toLowerCase();
+  if (l === INSTAGRAM_PROFILE_LABEL) return true;
+  return isInstagramProfileUrl(url);
+}
+
+function getInstagramProfileUrl(influencer: InfluencerRow) {
+  const links = (influencer.donation_links ?? []).filter(Boolean) as Array<{ label?: unknown; url?: unknown }>;
+
+  const direct = links.find(
+    (x) => String(x.label || "").trim().toLowerCase() === INSTAGRAM_PROFILE_LABEL
+  );
+  if (direct?.url) return normalizeExternalUrl(String(direct.url || ""));
+
+  const fallback = links.find((x) =>
+    isInstagramProfileEntry(String(x.label || ""), String(x.url || ""))
+  );
+  if (fallback?.url) return normalizeExternalUrl(String(fallback.url || ""));
+
+  const legacy = String(influencer.donation_link || "").trim();
+  if (isInstagramProfileUrl(legacy)) return normalizeExternalUrl(legacy);
+
+  return "";
 }
 
 function VideoModal({
@@ -190,11 +239,16 @@ function VideoModal({
                   />
                 ) : mountFrame && videoSrc ? (
                   <video
-                    className="absolute inset-0 h-full w-full bg-black"
+                    className={[
+                      "absolute inset-0 h-full w-full bg-black",
+                      isPortraitVideo ? "object-cover" : "object-contain",
+                    ].join(" ")}
                     src={videoSrc}
                     controls
                     autoPlay
                     playsInline
+                    controlsList={isPortraitVideo ? "nofullscreen noremoteplayback" : undefined}
+                    disablePictureInPicture={isPortraitVideo}
                     onLoadedData={() => setFrameLoaded(true)}
                   />
                 ) : (
@@ -299,7 +353,7 @@ function ImageModal({
               type="button"
               aria-label="Close"
             >
-              âœ•
+              ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¢
             </button>
 
             <Image
@@ -333,6 +387,7 @@ export default function StoryPageClient({ influencer }: { influencer: Influencer
   const ytId = extractYouTubeId(rawVideo);
   const ig = parseInstagram(rawVideo);
   const uploadedVideoUrl = !ytId && !ig && rawVideo ? resolveUploadedVideoUrl(rawVideo) : null;
+  const instagramProfileUrl = getInstagramProfileUrl(influencer);
 
   const igEmbedUrl = ig?.embed ?? null;
   const ytEmbedUrl = ytId ? `https://www.youtube.com/embed/${ytId}` : null;
@@ -362,36 +417,40 @@ const donationButtons = useMemo(() => {
     ? list
         .map((x) => {
           const url = String(x?.url || "").trim();
-          const rawLabel = String(x?.label || x?.platform || x?.name || "").trim(); // âœ… fallback keys
+          const rawLabel = String(x?.label || x?.platform || x?.name || "").trim();
+          if (!url) return null;
+          if (isInstagramProfileEntry(rawLabel, url)) return null;
+
           return {
             label: rawLabel || (url ? inferDonateLabel(url) : "Donate"),
             url,
           };
         })
-        .filter((x) => x.url)
+        .filter((x) => !!x?.url)
     : [];
 
-  if (!cleaned.length && influencer.donation_link) {
+  if (!cleaned.length && influencer.donation_link && !isInstagramProfileUrl(influencer.donation_link)) {
     return [{ label: inferDonateLabel(influencer.donation_link), url: influencer.donation_link }];
   }
-  return cleaned;
+  return cleaned as { label: string; url: string }[];
 }, [influencer.donation_links, influencer.donation_link]);
 
   return (
-    <main className="min-h-screen bg-gradient-to-b from-emerald-50 via-white to-white text-zinc-900">
+    <main className="min-h-screen overflow-x-hidden bg-gradient-to-b from-emerald-50 via-white to-white text-zinc-900">
       <div className="pointer-events-none fixed inset-0 -z-10">
         <div className="absolute -top-24 left-1/2 h-72 w-72 -translate-x-1/2 rounded-full bg-emerald-200/30 blur-3xl" />
         <div className="absolute top-40 left-10 h-64 w-64 rounded-full bg-emerald-300/15 blur-3xl" />
         <div className="absolute top-64 right-10 h-64 w-64 rounded-full bg-emerald-200/20 blur-3xl" />
       </div>
 
-      <section className="mx-auto max-w-6xl px-4 pb-16 pt-8">
-        <div className="flex items-center justify-between gap-3">
+      <section className="mx-auto max-w-6xl px-3 pb-16 pt-8 sm:px-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <Link
             href="/#stories"
-            className="rounded-2xl border border-emerald-200 bg-white/80 px-4 py-2 text-sm font-semibold text-emerald-800 shadow-sm backdrop-blur hover:bg-emerald-50"
+            className="inline-flex items-center gap-1 rounded-2xl border border-emerald-200 bg-white/80 px-4 py-2 text-sm font-semibold text-emerald-800 shadow-sm backdrop-blur hover:bg-emerald-50"
           >
-            â† Back
+            <ChevronLeft className="h-4 w-4" />
+            Back to stories
           </Link>
 
           {isHighlight ? (
@@ -406,7 +465,7 @@ const donationButtons = useMemo(() => {
             initial={{ opacity: 0, y: 14 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ type: "spring", stiffness: 220, damping: 24 }}
-            className="rounded-[28px] border border-emerald-200/70 bg-white/70 p-5 shadow-soft backdrop-blur"
+            className="min-w-0 max-w-full rounded-[28px] border border-emerald-200/70 bg-white/70 p-4 shadow-soft backdrop-blur sm:p-5"
             style={{ transform: "translateZ(0)" }}
           >
             <div className="flex items-start justify-between gap-3">
@@ -510,19 +569,11 @@ const donationButtons = useMemo(() => {
                 <>
                   <button
                     onClick={() => setIgOpen(true)}
-                    className="rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700"
+                    className="sm:col-span-2 rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700"
                     type="button"
                   >
                     Watch Video
                   </button>
-                  <a
-                    href={ig.canonical}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="rounded-2xl border border-emerald-200 bg-white px-4 py-3 text-center text-sm font-semibold text-emerald-800 hover:bg-emerald-50"
-                  >
-                    Instagram profile
-                  </a>
                 </>
               ) : uploadedVideoUrl ? (
                 <button
@@ -538,15 +589,26 @@ const donationButtons = useMemo(() => {
                 </div>
               )}
             </div>
+
+            {instagramProfileUrl ? (
+              <a
+                href={instagramProfileUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-3 inline-flex items-center justify-center rounded-2xl border border-rose-200 bg-gradient-to-r from-white via-rose-50 to-pink-50 px-4 py-2 text-sm font-semibold text-rose-700 shadow-sm transition-colors hover:border-rose-300 hover:from-rose-50 hover:to-pink-100"
+              >
+                Instagram profile
+              </a>
+            ) : null}
           </motion.div>
 
           <motion.aside
             initial={{ opacity: 0, y: 14 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ type: "spring", stiffness: 220, damping: 24, delay: 0.04 }}
-            className="rounded-[28px] border border-emerald-200/70 bg-white/70 p-5 shadow-soft backdrop-blur"
+            className="min-w-0 max-w-full rounded-[28px] border border-emerald-200/70 bg-white/70 p-4 shadow-soft backdrop-blur sm:p-5"
           >
-           {/* âœ… Support FIRST */}
+           {/* Support first */}
 <div>
   <p className="text-sm font-semibold text-zinc-900">Support</p>
 
@@ -560,8 +622,8 @@ const donationButtons = useMemo(() => {
           rel="noreferrer"
           className={
             idx === 0
-              ? "block rounded-2xl bg-emerald-600 px-4 py-3 text-center text-sm font-semibold text-white shadow-sm hover:bg-emerald-700"
-              : "block rounded-2xl border border-emerald-200 bg-white px-4 py-3 text-center text-sm font-semibold text-emerald-800 hover:bg-emerald-50"
+              ? "block break-words rounded-2xl bg-emerald-600 px-4 py-3 text-center text-sm font-semibold text-white shadow-sm hover:bg-emerald-700"
+              : "block break-words rounded-2xl border border-emerald-200 bg-white px-4 py-3 text-center text-sm font-semibold text-emerald-800 hover:bg-emerald-50"
           }
         >
           {b.label || "Donate"}
@@ -579,12 +641,12 @@ const donationButtons = useMemo(() => {
   </div>
 </div>
 
-{/* âœ… Story AFTER */}
+{/* Story after */}
 <div className="mt-6">
   <p className="text-sm font-semibold text-zinc-900">Story</p>
 
   <div className="mt-3 rounded-3xl border border-emerald-200/70 bg-white p-5">
-    <p className="whitespace-pre-line text-sm leading-relaxed text-zinc-700">
+    <p className="whitespace-pre-line break-words text-sm leading-relaxed text-zinc-700">
       {influencer.bio || "No story provided yet."}
     </p>
   </div>
@@ -623,11 +685,12 @@ const donationButtons = useMemo(() => {
         openExternalHref={uploadedVideoUrl || "#"}
         openExternalLabel="Open video file"
         showExternal={false}
-        variant="video"
+        variant="reel"
       />
 
       <ImageModal open={imgOpen} onClose={() => setImgOpen(false)} src={activeUrl} alt={influencer.name} />
     </main>
   );
 }
+
 

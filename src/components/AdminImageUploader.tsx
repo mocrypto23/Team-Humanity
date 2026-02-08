@@ -6,6 +6,8 @@ export type UploadState = {
   busy: boolean;
   progress: number;
   message: string;
+  loadedBytes?: number;
+  totalBytes?: number;
 };
 
 type Props = {
@@ -24,6 +26,14 @@ type Props = {
 
   onUploadStateChange?: (state: UploadState) => void;
 };
+
+function formatBytes(value?: number) {
+  if (!value || !Number.isFinite(value) || value <= 0) return "0 MB";
+  const mb = value / (1024 * 1024);
+  if (mb >= 100) return `${Math.round(mb)} MB`;
+  if (mb >= 10) return `${mb.toFixed(1)} MB`;
+  return `${mb.toFixed(2)} MB`;
+}
 
 function toPublicUrlMaybe(pathOrUrl: string) {
   const p = String(pathOrUrl || "").trim();
@@ -58,11 +68,15 @@ export default function AdminImageUploader({
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string>("");
   const [progress, setProgress] = useState(0);
+  const [loadedBytes, setLoadedBytes] = useState(0);
+  const [totalBytes, setTotalBytes] = useState(0);
 
   const setUploadState = (next: UploadState) => {
     setBusy(next.busy);
     setProgress(next.progress);
     setMsg(next.message);
+    setLoadedBytes(next.loadedBytes ?? 0);
+    setTotalBytes(next.totalBytes ?? 0);
     onUploadStateChange?.(next);
   };
 
@@ -70,80 +84,134 @@ export default function AdminImageUploader({
     const file = ref.current?.files?.[0];
     if (!file) return;
 
-    setUploadState({ busy: true, progress: 0, message: "Uploading..." });
+    setUploadState({
+      busy: true,
+      progress: 0,
+      message: "Uploading...",
+      loadedBytes: 0,
+      totalBytes: file.size,
+    });
 
     try {
-      const fd = new FormData();
-      fd.append("file", file);
+      const signRes = await fetch("/admin/upload-sign", {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          fileName: file.name,
+          fileType: file.type,
+          fileSize: file.size,
+        }),
+      });
 
-      const json = await new Promise<{
+      const signText = await signRes.text();
+      let signJson: {
         ok?: boolean;
         error?: string;
-        publicUrl?: string;
-        public_url?: string;
-        url?: string;
+        signedUrl?: string;
         path?: string;
-      }>((resolve, reject) => {
+      } = {};
+      try {
+        signJson = JSON.parse(signText || "{}") as typeof signJson;
+      } catch {
+        const snippet = signText.replace(/\s+/g, " ").slice(0, 160);
+        throw new Error(
+          `Invalid upload-sign response (status ${signRes.status}). Response: ${snippet || "invalid JSON"}`
+        );
+      }
+
+      if (!signRes.ok || !signJson.ok || !signJson.signedUrl || !signJson.path) {
+        throw new Error(signJson.error || `Failed to prepare upload (status ${signRes.status})`);
+      }
+
+      await new Promise<void>((resolve, reject) => {
         const xhr = new XMLHttpRequest();
-        xhr.open("POST", "/admin/upload");
+        xhr.open("PUT", signJson.signedUrl);
+        xhr.setRequestHeader("Accept", "application/json");
 
         xhr.upload.onloadstart = () => {
-          setUploadState({ busy: true, progress: 0, message: "Uploading..." });
+          setUploadState({
+            busy: true,
+            progress: 0,
+            message: "Uploading...",
+            loadedBytes: 0,
+            totalBytes: file.size,
+          });
         };
 
         xhr.upload.onprogress = (event) => {
-          if (!event.lengthComputable) return;
-          const pct = Math.max(0, Math.min(100, Math.round((event.loaded / event.total) * 100)));
-          setUploadState({ busy: true, progress: pct, message: "Uploading..." });
+          const total = event.lengthComputable && event.total > 0 ? event.total : file.size;
+          const loaded = Math.max(0, event.loaded || 0);
+          const pct =
+            total > 0
+              ? Math.max(0, Math.min(100, Math.round((loaded / total) * 100)))
+              : 0;
+
+          setUploadState({
+            busy: true,
+            progress: pct,
+            message: "Uploading...",
+            loadedBytes: loaded,
+            totalBytes: total,
+          });
         };
 
         xhr.upload.onload = () => {
-          setUploadState({ busy: true, progress: 100, message: "Processing..." });
+          setUploadState({
+            busy: true,
+            progress: 100,
+            message: "Processing...",
+            loadedBytes: file.size,
+            totalBytes: file.size,
+          });
         };
 
         xhr.onerror = () => reject(new Error("Upload failed"));
         xhr.onabort = () => reject(new Error("Upload canceled"));
         xhr.onload = () => {
-          let parsed: {
-            ok?: boolean;
-            error?: string;
-            publicUrl?: string;
-            public_url?: string;
-            url?: string;
-            path?: string;
-          } = {};
-
-          try {
-            parsed = JSON.parse(xhr.responseText || "{}") as typeof parsed;
-          } catch {
-            reject(new Error("Invalid upload response"));
-            return;
-          }
-
+          const rawText = String(xhr.responseText || "");
+          const snippet = rawText.replace(/\s+/g, " ").slice(0, 160);
           if (xhr.status < 200 || xhr.status >= 300) {
-            reject(new Error(parsed.error || "Upload failed"));
+            let errorMessage = "Upload failed";
+            try {
+              const parsed = JSON.parse(rawText || "{}") as { error?: string; message?: string };
+              errorMessage = parsed.error || parsed.message || errorMessage;
+            } catch {
+              if (snippet) errorMessage = snippet;
+            }
+            reject(new Error(`Upload failed (status ${xhr.status}): ${errorMessage}`));
             return;
           }
 
-          resolve(parsed);
+          resolve();
         };
 
-        xhr.send(fd);
+        const payload = new FormData();
+        payload.append("cacheControl", "31536000");
+        payload.append("", file);
+        xhr.send(payload);
       });
 
-      if (!json?.ok) throw new Error(json?.error || "Upload failed");
-
-      const raw = String(json.publicUrl || json.public_url || json.url || json.path || "");
+      const raw = String(signJson.path || "");
       if (!raw) throw new Error("Upload ok but missing path/url");
 
       const finalUrl = toPublicUrlMaybe(raw);
       onUploaded(finalUrl);
 
       if (ref.current) ref.current.value = "";
-      setUploadState({ busy: false, progress: 100, message: "Uploaded" });
+      setUploadState({
+        busy: false,
+        progress: 100,
+        message: "Uploaded",
+        loadedBytes: file.size,
+        totalBytes: file.size,
+      });
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : "Upload failed";
-      setUploadState({ busy: false, progress: 0, message });
+      setUploadState({ busy: false, progress: 0, message, loadedBytes: 0, totalBytes: file.size });
     }
   }
 
@@ -200,7 +268,11 @@ export default function AdminImageUploader({
             />
           </div>
           <p className="text-xs font-semibold text-emerald-700">
-            {msg.toLowerCase().includes("processing") ? "Processing..." : `Uploading... ${progress}%`}
+            {msg.toLowerCase().includes("processing")
+              ? "Processing..."
+              : totalBytes && totalBytes > 0
+              ? `Uploading... ${progress}% (${formatBytes(loadedBytes)} / ${formatBytes(totalBytes)})`
+              : `Uploading... ${progress}%`}
           </p>
         </div>
       ) : null}

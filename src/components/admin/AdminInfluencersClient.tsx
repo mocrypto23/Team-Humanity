@@ -26,10 +26,12 @@ import {
   deleteInfluencer,
   moveInfluencerSort,
   setInfluencerPin,
+  upsertSiteCopy,
 } from "@/app/admin/actions";
 
 const DONATION_LABELS = ["GoFundMe", "Chuffed", "PayPal", "Other"] as const;
 type DonationLabelPreset = (typeof DONATION_LABELS)[number];
+const INSTAGRAM_PROFILE_LABEL = "__instagram_profile__";
 
 type DonationFormItem = {
   labelPreset: DonationLabelPreset;
@@ -37,10 +39,18 @@ type DonationFormItem = {
   url: string;
 };
 
+type SiteCopy = {
+  headlineLine1: string;
+  headlineLine2: string;
+  subheading: string;
+};
+
 const EMPTY_UPLOAD_STATE: UploadState = {
   busy: false,
   progress: 0,
   message: "",
+  loadedBytes: 0,
+  totalBytes: 0,
 };
 
 function buildReturnTo(pathname: string, sp: URLSearchParams) {
@@ -118,11 +128,60 @@ function getFirstImage(row: InfluencerRow) {
 function clampText(s: string, max = 120) {
   const v = String(s || "").replace(/\s+/g, " ").trim();
   if (!v) return "";
-  return v.length > max ? `${v.slice(0, max).trim()}…` : v;
+  return v.length > max ? `${v.slice(0, max).trim()}...` : v;
 }
 
 function isPresetLabel(label: string) {
   return (DONATION_LABELS as readonly string[]).includes(label);
+}
+
+function formatBytes(value?: number) {
+  if (!value || !Number.isFinite(value) || value <= 0) return "0 MB";
+  const mb = value / (1024 * 1024);
+  if (mb >= 100) return `${Math.round(mb)} MB`;
+  if (mb >= 10) return `${mb.toFixed(1)} MB`;
+  return `${mb.toFixed(2)} MB`;
+}
+
+function normalizeExternalUrl(raw: string) {
+  const v = String(raw || "").trim();
+  if (!v) return "";
+  if (/^https?:\/\//i.test(v)) return v;
+  return `https://${v}`;
+}
+
+function isInstagramProfileUrl(raw: string) {
+  try {
+    const u = new URL(normalizeExternalUrl(raw));
+    const host = u.hostname.toLowerCase();
+    if (!host.includes("instagram.com") && !host.includes("instagr.am")) return false;
+
+    const first = u.pathname.split("/").filter(Boolean)[0]?.toLowerCase() || "";
+    if (!first) return false;
+    return !["p", "reel", "reels", "tv"].includes(first);
+  } catch {
+    return false;
+  }
+}
+
+function isInstagramProfileEntry(label: string, url: string) {
+  const l = String(label || "").trim().toLowerCase();
+  if (l === INSTAGRAM_PROFILE_LABEL) return true;
+  return isInstagramProfileUrl(url);
+}
+
+function extractInstagramProfileUrl(links: DonationLinkItem[]) {
+  const direct = links.find((x) => String(x.label || "").trim().toLowerCase() === INSTAGRAM_PROFILE_LABEL);
+  if (direct?.url) return String(direct.url).trim();
+
+  const fallback = links.find((x) => isInstagramProfileEntry(String(x.label || ""), String(x.url || "")));
+  if (fallback?.url) return String(fallback.url).trim();
+
+  return "";
+}
+
+function removeInstagramProfileLinks(links: DonationLinkItem[]) {
+  return links.filter((x) => !isInstagramProfileEntry(String(x.label || ""), String(x.url || "")));
 }
 
 function UploadProgress({
@@ -145,7 +204,13 @@ function UploadProgress({
           />
         </div>
         <p className="text-xs font-semibold text-emerald-700">
-          {isProcessing ? `Processing ${label}...` : `Uploading ${label}... ${state.progress}%`}
+          {isProcessing
+            ? `Processing ${label}...`
+            : state.totalBytes && state.totalBytes > 0
+            ? `Uploading ${label}... ${state.progress}% (${formatBytes(state.loadedBytes)} / ${formatBytes(
+                state.totalBytes
+              )})`
+            : `Uploading ${label}... ${state.progress}%`}
         </p>
       </div>
     );
@@ -161,8 +226,10 @@ function UploadProgress({
 
 export default function AdminInfluencersClient({
   influencers,
+  siteCopy,
 }: {
   influencers: InfluencerRow[];
+  siteCopy: SiteCopy;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -257,12 +324,17 @@ export default function AdminInfluencersClient({
 
   const [storyTitle, setStoryTitle] = useState("");
   const [bio, setBio] = useState("");
+  const [instagramProfileUrl, setInstagramProfileUrl] = useState("");
   const [videoUrl, setVideoUrl] = useState("");
 
   const [isPublished, setIsPublished] = useState(false);
   const [isConfirmed, setIsConfirmed] = useState(false);
 
   const [confirmedLabel, setConfirmedLabel] = useState<string>("");
+  const [siteCopyOpen, setSiteCopyOpen] = useState(false);
+  const [siteHeadline1, setSiteHeadline1] = useState(siteCopy.headlineLine1 || "");
+  const [siteHeadline2, setSiteHeadline2] = useState(siteCopy.headlineLine2 || "");
+  const [siteSubheading, setSiteSubheading] = useState(siteCopy.subheading || "");
 
   const [donationLinks, setDonationLinks] = useState<DonationFormItem[]>([
     { labelPreset: "GoFundMe", customLabel: "", url: "" },
@@ -275,6 +347,7 @@ export default function AdminInfluencersClient({
   const resetForm = () => {
     setStoryTitle("");
     setBio("");
+    setInstagramProfileUrl("");
     setVideoUrl("");
     setDonationLinks([{ labelPreset: "GoFundMe", customLabel: "", url: "" }]);
     setImagePaths([]);
@@ -293,6 +366,7 @@ export default function AdminInfluencersClient({
     if (editing) {
       setStoryTitle(editing.name ?? "");
       setBio(editing.bio ?? "");
+      setInstagramProfileUrl("");
       setVideoUrl(editing.video_url ?? "");
 
       setIsPublished(!!editing.is_published);
@@ -301,10 +375,13 @@ export default function AdminInfluencersClient({
       setConfirmedLabel(editing.confirmed_label ?? "");
 
       const links = getRowLinks(editing);
+      const instagramUrl = extractInstagramProfileUrl(links);
+      const donationOnly = removeInstagramProfileLinks(links);
+      setInstagramProfileUrl(instagramUrl);
 
       setDonationLinks(
-        links.length
-          ? links.map((x) => {
+        donationOnly.length
+          ? donationOnly.map((x) => {
               const rawLabel = String(x.label || "").trim() || "Other";
               const url = String(x.url || "").trim();
 
@@ -331,6 +408,13 @@ export default function AdminInfluencersClient({
     }
   }, [isModalOpen, editing?.id]);
 
+  const openSiteCopy = () => {
+    setSiteHeadline1(siteCopy.headlineLine1 || "");
+    setSiteHeadline2(siteCopy.headlineLine2 || "");
+    setSiteSubheading(siteCopy.subheading || "");
+    setSiteCopyOpen(true);
+  };
+
   const donationLinksJson = useMemo(() => {
     const items: DonationLinkItem[] = donationLinks
       .map((x) => {
@@ -344,8 +428,13 @@ export default function AdminInfluencersClient({
       })
       .filter((x) => x.url);
 
+    const profile = normalizeExternalUrl(instagramProfileUrl);
+    if (profile && isInstagramProfileUrl(profile)) {
+      items.push({ label: INSTAGRAM_PROFILE_LABEL, url: profile });
+    }
+
     return JSON.stringify(items);
-  }, [donationLinks]);
+  }, [donationLinks, instagramProfileUrl]);
 
   const imagePathsJson = useMemo(() => {
     const arr = imagePaths.map((x) => String(x || "").trim()).filter(Boolean);
@@ -437,27 +526,36 @@ export default function AdminInfluencersClient({
   const openVideoPicker = () => videoInputRef.current?.click();
 
   return (
-    <div className="space-y-6" id="top">
+    <div className="space-y-6 overflow-x-hidden" id="top">
       {toastSec > 0 ? (
         <div className="fixed top-4 right-4 z-[9999] rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-900 shadow-lg">
-          ✅ Done — closing in {toastSec}s
+          Done - closing in {toastSec}s
         </div>
       ) : null}
 
       {/* Top bar */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-zinc-900">Influencers</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-zinc-900">Influencers</h1>
           <p className="text-zinc-600 mt-1">Manage profiles, stories, and donation links.</p>
         </div>
 
-        <button
-          type="button"
-          onClick={openCreate}
-          className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-2xl font-medium transition-colors shadow-lg shadow-emerald-200 flex items-center gap-2 transform active:scale-95"
-        >
-          <Plus className="w-5 h-5" /> Create New
-        </button>
+        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+          <button
+            type="button"
+            onClick={openSiteCopy}
+            className="w-full sm:w-auto justify-center border border-emerald-200 bg-white/80 text-emerald-800 px-5 py-2.5 rounded-2xl font-semibold transition-colors shadow-sm hover:bg-emerald-50 flex items-center gap-2"
+          >
+            Edit website info
+          </button>
+          <button
+            type="button"
+            onClick={openCreate}
+            className="w-full sm:w-auto justify-center bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-2xl font-medium transition-colors shadow-lg shadow-emerald-200 flex items-center gap-2 transform active:scale-95"
+          >
+            <Plus className="w-5 h-5" /> Create New
+          </button>
+        </div>
       </div>
 
       {/* status */}
@@ -465,13 +563,13 @@ export default function AdminInfluencersClient({
         <div className="space-y-2">
           {ok ? (
             <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-900">
-              ✅ Saved
+              Saved
             </div>
           ) : null}
 
           {err ? (
             <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">
-              ❌ {err}
+              Error: {err}
             </div>
           ) : null}
         </div>
@@ -498,7 +596,7 @@ export default function AdminInfluencersClient({
           return (
             <div
               key={item.id}
-              className="bg-white/90 backdrop-blur rounded-3xl p-5 shadow-sm border border-zinc-100 flex flex-col md:flex-row items-start md:items-center gap-6 transition-all hover:shadow-lg hover:border-emerald-200"
+              className="bg-white/90 backdrop-blur rounded-3xl p-4 sm:p-5 shadow-sm border border-zinc-100 flex flex-col md:flex-row items-start md:items-center gap-4 sm:gap-6 transition-all hover:shadow-lg hover:border-emerald-200"
             >
               {/* Sort Controls */}
               <div className="flex flex-row md:flex-col gap-2 md:gap-1 bg-zinc-50 p-1 rounded-xl">
@@ -658,13 +756,90 @@ export default function AdminInfluencersClient({
         ) : null}
       </div>
 
+      {siteCopyOpen && (
+        <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center overflow-y-auto p-3 sm:p-4 bg-zinc-900/40 backdrop-blur-md">
+          <div className="my-4 sm:my-0 bg-white rounded-2xl sm:rounded-3xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl flex flex-col">
+            <div className="p-4 sm:p-6 border-b border-zinc-100 flex justify-between items-center sticky top-0 bg-white z-10">
+              <h2 className="text-lg sm:text-xl font-bold text-zinc-900">Edit website info</h2>
+
+              <button
+                type="button"
+                onClick={() => setSiteCopyOpen(false)}
+                className="p-2 hover:bg-zinc-100 rounded-full text-zinc-500 transition-colors"
+                aria-label="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form action={upsertSiteCopy} className="p-4 sm:p-6 md:p-8 space-y-6">
+              <input type="hidden" name="return_to" value={returnTo} />
+
+              <div>
+                <label className="block text-sm font-bold text-zinc-800 mb-2">Headline line 1</label>
+                <input
+                  name="headline_line1"
+                  type="text"
+                  value={siteHeadline1}
+                  onChange={(e) => setSiteHeadline1(e.target.value)}
+                  className="w-full px-4 py-3 rounded-xl bg-white border border-zinc-300 text-zinc-900 placeholder-zinc-400 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all shadow-sm"
+                  placeholder="Help directly."
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-zinc-800 mb-2">Headline line 2</label>
+                <input
+                  name="headline_line2"
+                  type="text"
+                  value={siteHeadline2}
+                  onChange={(e) => setSiteHeadline2(e.target.value)}
+                  className="w-full px-4 py-3 rounded-xl bg-white border border-zinc-300 text-zinc-900 placeholder-zinc-400 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all shadow-sm"
+                  placeholder="Transparently."
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-zinc-800 mb-2">Subheading</label>
+                <textarea
+                  name="subheading"
+                  value={siteSubheading}
+                  onChange={(e) => setSiteSubheading(e.target.value)}
+                  className="w-full px-4 py-3 rounded-xl bg-white border border-zinc-300 text-zinc-900 placeholder-zinc-400 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all h-32 resize-none shadow-sm"
+                  placeholder="Team Humanity is a curated space..."
+                  required
+                />
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-3">
+                <button
+                  type="button"
+                  onClick={() => setSiteCopyOpen(false)}
+                  className="sm:w-auto w-full rounded-2xl border border-zinc-200 bg-white px-5 py-2.5 text-sm font-semibold text-zinc-600 hover:bg-zinc-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="sm:w-auto w-full rounded-2xl bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700"
+                >
+                  Save website info
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-900/40 backdrop-blur-md">
-          <div className="bg-white rounded-3xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl flex flex-col">
+        <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center overflow-y-auto p-3 sm:p-4 bg-zinc-900/40 backdrop-blur-md">
+          <div className="my-4 sm:my-0 bg-white rounded-2xl sm:rounded-3xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl flex flex-col">
             {/* Header */}
-            <div className="p-6 border-b border-zinc-100 flex justify-between items-center sticky top-0 bg-white z-10">
-              <h2 className="text-xl font-bold text-zinc-900">
+            <div className="p-4 sm:p-4 sm:p-6 border-b border-zinc-100 flex justify-between items-center sticky top-0 bg-white z-10">
+              <h2 className="text-lg sm:text-xl font-bold text-zinc-900">
                 {editing ? "Edit Influencer" : "Create New Influencer"}
               </h2>
 
@@ -679,7 +854,7 @@ export default function AdminInfluencersClient({
             </div>
 
             {/* Form */}
-            <form action={upsertInfluencer} className="p-8 space-y-6">
+            <form action={upsertInfluencer} className="p-4 sm:p-6 md:p-8 space-y-6">
               <input type="hidden" name="id" value={editing?.id ?? ""} />
               <input type="hidden" name="donation_links" value={donationLinksJson} />
               <input type="hidden" name="image_paths" value={imagePathsJson} />
@@ -708,6 +883,17 @@ export default function AdminInfluencersClient({
                   onChange={(e) => setBio(e.target.value)}
                   className="w-full px-4 py-3 rounded-xl bg-white border border-zinc-300 text-zinc-900 placeholder-zinc-400 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all h-32 resize-none shadow-sm"
                   placeholder="Tell the story..."
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-zinc-800 mb-2">Instagram Profile URL</label>
+                <input
+                  type="url"
+                  value={instagramProfileUrl}
+                  onChange={(e) => setInstagramProfileUrl(e.target.value)}
+                  className="w-full px-4 py-3 rounded-xl bg-white border border-zinc-300 text-zinc-900 placeholder-zinc-400 focus:ring-2 focus:ring-emerald-500 outline-none shadow-sm transition-all"
+                  placeholder="https://instagram.com/username"
                 />
               </div>
 
@@ -982,3 +1168,8 @@ export default function AdminInfluencersClient({
     </div>
   );
 }
+
+
+
+
+
