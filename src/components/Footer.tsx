@@ -1,4 +1,4 @@
-import Link from "next/link";
+﻿import Link from "next/link";
 
 export default function Footer() {
   return (
@@ -50,15 +50,23 @@ export default function Footer() {
                 Verified badges highlight confirmed profiles when available.
               </p>
             </div>
+
+            <div className="mt-4">
+              <p className="text-xs font-semibold text-white/90">Office Address</p>
+              <p className="mt-1 text-sm leading-relaxed text-white/80">
+                Saqla Building, Al-Shuhada Street, Gaza, Palestine, 4th Floor, Apartment 10.
+              </p>
+            </div>
           </div>
         </div>
 
         <div className="mt-10 border-t border-white/15 pt-6">
           <p className="text-center text-xs text-white/70">
-            © {new Date().getFullYear()} Team Humanity. All rights reserved.
+            &copy; {new Date().getFullYear()} Team Humanity. All rights reserved.
           </p>
         </div>
       </div>
     </footer>
   );
 }
+

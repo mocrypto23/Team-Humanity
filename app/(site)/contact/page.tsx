@@ -124,6 +124,38 @@ export default function ContactPage() {
           {status.type === "loading" ? "Sending..." : "Send message"}
         </button>
       </form>
+
+      <section className="mt-8 rounded-2xl border border-zinc-200 bg-zinc-50 p-5">
+        <p className="text-sm font-semibold text-zinc-900">Direct Contact</p>
+        <p className="mt-1 text-sm text-zinc-600">For urgent matters, use the details below.</p>
+
+        <dl className="mt-4 grid gap-4 sm:grid-cols-2">
+          <div>
+            <dt className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Email</dt>
+            <dd className="mt-1 text-sm text-zinc-900">
+              <a className="hover:underline" href="mailto:test@gmail.com">
+                test@gmail.com
+              </a>
+            </dd>
+          </div>
+
+          <div>
+            <dt className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Phone</dt>
+            <dd className="mt-1 text-sm text-zinc-900">
+              <a className="hover:underline" href="tel:+44000000">
+                +44000000
+              </a>
+            </dd>
+          </div>
+
+          <div className="sm:col-span-2">
+            <dt className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Office Address</dt>
+            <dd className="mt-1 text-sm leading-relaxed text-zinc-900">
+              Saqla Building, Al-Shuhada Street, Gaza, Palestine, 4th Floor, Apartment 10.
+            </dd>
+          </div>
+        </dl>
+      </section>
     </main>
   );
 }
